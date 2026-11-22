@@ -22,8 +22,11 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Rubik,system-
 h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
 .note{color:var(--dim);font-size:15px;margin:0 0 14px}
 .list{display:grid;gap:10px;overflow:auto}
-.team{min-height:56px;border-radius:14px;border:1px solid var(--line);background:var(--face);color:var(--ink);font:700 19px Rubik,sans-serif;text-align:left;padding:0 18px}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;background:var(--face);border-radius:14px;padding:8px 8px 8px 16px}
+.tname{font-weight:700;font-size:18px;overflow-wrap:anywhere}
+.team{min-height:48px;min-width:96px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.1);color:var(--ink);font:700 16px Rubik,sans-serif;padding:0 12px}
 .team:active{background:var(--live)}
+.team:disabled{background:transparent;color:var(--dim);border-style:dashed}
 .top{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .me{font:400 22px/1.1 'Archivo Black',sans-serif}
 .chg{min-height:44px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px Rubik,sans-serif;padding:0 14px}
@@ -68,8 +71,8 @@ let myId = null;
 try { myId = localStorage.getItem("hzId"); } catch (e) {}
 if (!myId) { myId = "p" + Math.random().toString(36).slice(2, 10); try { localStorage.setItem("hzId", myId); } catch (e) {} }
 const T = x => "holidaze/" + room + "/" + x;
-let myTeam = null;
-try { const v = localStorage.getItem("hccTeam-" + room); if (v !== null) myTeam = +v; } catch (e) {}
+let myTeam = null, mySeat = null;
+try { const v = localStorage.getItem("hccSeat-" + room); if (v) { myTeam = +v.slice(0, -1); mySeat = v.slice(-1); } } catch (e) {}
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function connText(t) { $("conn").textContent = t; $("joinNote").textContent = t; }
@@ -86,7 +89,7 @@ function connect() {
   mq.on("connect", () => {
     connText("Step 2 of 2: waiting for the game laptop (" + room + ")…");
     mq.subscribe([T("state"), T("to/" + myId)]);
-    send({ t: "hello", team: myTeam });
+    send({ t: "hello", team: myTeam, seat: mySeat });
   });
   mq.on("reconnect", () => connText("Reconnecting…"));
   mq.on("offline", () => connText("Offline. Retrying…"));
@@ -99,43 +102,49 @@ function connect() {
 }
 function onData(d) {
   if (!d || typeof d !== "object") return;
-  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v3"); render(); }
-  else if (d.t === "nope") flash("Not your turn!");
+  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v4"); render(); }
+  else if (d.t === "nope") flash(d.why === "partner" ? "Your partner's turn!" : "Not your turn!");
+  else if (d.t === "seatTaken") { clearSeat(); joinMsg = "Someone else has that spot. Pick another."; render(); }
 }
 setInterval(() => {
   if (!mq || !mq.connected) return;
-  send({ t: "ping", team: myTeam });
+  send({ t: "ping", team: myTeam, seat: mySeat });
   if (state && Date.now() - lastState > 9000) connText("The game laptop isn't responding. Is the game page open on it?");
 }, 4000);
 function flash(t) {
   const el = $("status"); el.textContent = t; el.classList.add("flash");
   clearTimeout(flashT); flashT = setTimeout(() => { el.classList.remove("flash"); render(); }, 1200);
 }
-function pickTeam(i) {
-  myTeam = i;
-  try { localStorage.setItem("hccTeam-" + room, String(i)); } catch (e) {}
-  send({ t: "hello", team: i });
+let joinMsg = "";
+function clearSeat() { myTeam = null; mySeat = null; try { localStorage.removeItem("hccSeat-" + room); } catch (e) {} }
+function pickSeat(i, seat) {
+  myTeam = i; mySeat = seat; joinMsg = "";
+  try { localStorage.setItem("hccSeat-" + room, i + seat); } catch (e) {}
+  send({ t: "hello", team: i, seat });
   askWake(); render();
 }
 function render() {
   if (!state) return;
-  const valid = myTeam != null && myTeam >= 0 && myTeam < state.teams.length;
+  const valid = myTeam != null && !!mySeat && myTeam >= 0 && myTeam < state.teams.length;
   $("join").hidden = valid; $("pad").hidden = !valid;
   if (!valid) {
-    $("joinNote").textContent = "Tap your team.";
-    $("teams").innerHTML = state.teams.map((n, i) => `<button class="team" data-i="${i}">${esc(n)}</button>`).join("");
+    $("joinNote").textContent = joinMsg || "Tap your team and spot. Partners take A and B.";
+    const taken = new Set(state.taken || []);
+    $("teams").innerHTML = state.teams.map((n, i) => `<div class="trow"><div class="tname">${esc(n)}</div>${["A", "B"].map(x => taken.has(i + x) ? `<button class="team" disabled>${x} taken</button>` : `<button class="team" data-i="${i}" data-s="${x}">Player ${x}</button>`).join("")}</div>`).join("");
     return;
   }
-  $("me").textContent = state.teams[myTeam];
+  $("me").textContent = state.teams[myTeam] + " · " + mySeat;
   $("cat").textContent = state.cat || "";
   const inMatch = state.inMatch.indexOf(myTeam) >= 0;
-  const mine = state.active === myTeam && (state.ph === "run" || state.ph === "pause");
+  const teamTurn = state.active === myTeam && (state.ph === "run" || state.ph === "pause");
+  const mine = teamTurn && (!state.alt || !(state.both && state.both[myTeam]) || (state.next && state.next[myTeam]) === mySeat);
   let label = "WAIT", st = "", cls = "off";
   if (!inMatch) { st = state.mode === "duel" ? "Not your match. Watch the TV." : "Not playing this round."; }
   else if (state.ph === "ready") { st = "Get ready…"; }
   else if (state.ph === "over") { st = "Round over. Watch the TV."; }
   else if (!state.alive[myTeam]) { label = "OUT"; st = "Your team is out this round."; }
   else if (mine) { label = state.ph === "pause" ? "PAUSED" : "TAP AFTER YOUR ANSWER"; st = state.ph === "pause" ? "Paused" : "Your turn!"; cls = "live"; }
+  else if (teamTurn) { st = "Your partner answers this time."; cls = ""; }
   else { st = "Wait for your turn."; cls = ""; }
   const b = $("btn"); b.className = cls; b.textContent = label;
   if (!$("status").classList.contains("flash")) $("status").textContent = st;
@@ -143,8 +152,8 @@ function render() {
   $("time").textContent = inMatch && tm != null ? tm.toFixed(1) + " seconds left" : "";
 }
 
-$("teams").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) pickTeam(+b.dataset.i); });
-$("chg").addEventListener("click", () => { myTeam = null; try { localStorage.removeItem("hccTeam-" + room); } catch (e) {} render(); });
+$("teams").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) pickSeat(+b.dataset.i, b.dataset.s); });
+$("chg").addEventListener("click", () => { clearSeat(); send({ t: "hello", team: null }); render(); });
 $("btn").addEventListener("pointerdown", e => {
   e.preventDefault();
   askWake();

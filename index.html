@@ -79,6 +79,8 @@ textarea{min-height:200px;resize:vertical}
 .lineup{margin:10px 0 0;padding-left:20px}
 .lineup li{margin:6px 0}
 .lineup span{color:var(--dim);font-size:14px}
+.chk{display:flex;align-items:center;gap:10px;min-height:44px;color:var(--ink);font-size:16px;margin:12px 0 0}
+.chk input{width:22px;height:22px;accent-color:var(--gold)}
 .phones{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;background:var(--face);border-radius:16px;padding:16px 18px;margin-top:18px}
 .phones h2{margin:0 0 6px}
 #qr{background:#fff;padding:10px;border-radius:12px;line-height:0}
@@ -164,6 +166,7 @@ textarea{min-height:200px;resize:vertical}
         <label>Head-to-head buttons (left and right side)</label>
         <div class="bar" style="margin:0"><button class="b" id="k0"></button><button class="b" id="k1"></button></div>
         <p class="note">Tap a button above, then press the key or clicker for that side. Tapping a clock face also switches turns.</p>
+        <label class="chk"><input type="checkbox" id="alt"> Partners alternate turns (phones)</label>
         <label for="rank">Rank teams by</label><select id="rank"><option value="wins">Wins (time left breaks ties)</option><option value="ans">Total answers (wins break ties)</option></select>
         <label>All-teams buttons (one per team)</label><div class="bar" id="tk" style="margin:0"></div>
         <p class="note">In All-teams mode, a team's button only works on its own turn.</p>
@@ -195,6 +198,7 @@ if (!S || !Array.isArray(S.teams) || S.teams.length < 2) S = JSON.parse(JSON.str
 S.cats = Array.isArray(S.cats) && S.cats.length ? S.cats : DEF.cats.slice();
 S.keys = Array.isArray(S.keys) && S.keys.length === 2 ? S.keys : DEF.keys.slice();
 S.secs = +S.secs || 30; S.pen = S.pen == null ? 5 : +S.pen; S.ci = +S.ci || 0;
+S.alt = S.alt !== false;
 S.mode = S.mode === "group" ? "group" : "duel"; S.rank = S.rank === "ans" ? "ans" : "wins"; S.gstart = +S.gstart || 0;
 fixArrays();
 if (!Array.isArray(S.order) || S.order.length !== S.teams.length) S.order = S.teams.map((_, i) => i);
@@ -212,7 +216,7 @@ function newMatch() {
   let ids;
   if (S.mode === "duel") ids = [S.order[0], S.order[1]];
   else { const n = S.teams.length, g = S.gstart % n; ids = S.teams.map((_, i) => (i + g) % n); }
-  M = { ids, t: ids.map(() => S.secs * 1000), c: ids.map(() => 0), alive: ids.map(() => true), outOrder: [],
+  M = { next: {}, ids, t: ids.map(() => S.secs * 1000), c: ids.map(() => 0), alive: ids.map(() => true), outOrder: [],
         a: null, st: S.mode === "duel" ? 1 : 0, ph: "ready", lastSw: 0, loser: null };
   $("over").classList.remove("show");
   build(); render();
@@ -322,6 +326,7 @@ function press(s) {
   const now = performance.now();
   if (M.ph !== "run" || now - M.lastSw < 250) return;
   if (S.mode === "duel" && M.a !== s) return;
+  const ti = M.ids[M.a]; M.next[ti] = nextSeat(ti) === "A" ? "B" : "A";
   M.c[M.a] += 1; M.a = nextAlive(M.a); M.lastSw = now; clickSnd(); say(""); render();
 }
 function pressTeam(ti) {
@@ -331,10 +336,14 @@ function pressTeam(ti) {
   if (s === M.a) { press(s); return; }
   if (s >= 0 && M.alive[s]) { tone(180, 0.15, "square", 0.15); say("Not your turn, " + S.teams[ti] + ". It's " + tn(M.a) + "'s turn."); }
 }
-function remotePress(ti, id) {
+function nextSeat(ti) { return M.next[ti] || "A"; }
+function seatsLive(ti) { const st = new Set(); livePhones().forEach(p => { if (p.team === ti && p.seat) st.add(p.seat); }); return st; }
+function bothLive(ti) { return seatsLive(ti).size === 2; }
+function remotePress(ti, id, seat) {
   if (ti == null || ti < 0 || ti >= S.teams.length) return;
-  const ok = M.ph === "run" && M.ids[M.a] === ti;
-  if (ok) { press(M.a); return; }
+  const teamTurn = M.ph === "run" && M.ids[M.a] === ti;
+  if (teamTurn && (!S.alt || !bothLive(ti) || seat === nextSeat(ti))) { press(M.a); return; }
+  if (teamTurn) { sendTo(id, { t: "nope", why: "partner" }); return; }
   if (M.ph === "run" && M.ids.indexOf(ti) >= 0 && M.alive[M.ids.indexOf(ti)]) {
     tone(180, 0.15, "square", 0.15); say("Not your turn, " + S.teams[ti] + ". It's " + tn(M.a) + "'s turn.");
   }
@@ -458,6 +467,8 @@ $("cats").addEventListener("change", () => {
 });
 $("secs").addEventListener("change", () => { S.secs = Math.min(300, Math.max(5, +$("secs").value || 30)); $("secs").value = S.secs; save(); if (M.ph === "ready") newMatch(); });
 $("pens").addEventListener("change", () => { S.pen = Math.min(60, Math.max(0, +$("pens").value || 0)); $("pens").value = S.pen; save(); });
+$("alt").checked = S.alt;
+$("alt").addEventListener("change", () => { S.alt = $("alt").checked; save(); broadcast(); });
 $("rank").addEventListener("change", () => { S.rank = $("rank").value === "ans" ? "ans" : "wins"; save(); render(); });
 $("resetAll").addEventListener("click", () => {
   const now = Date.now();
@@ -475,7 +486,8 @@ const T = x => "holidaze/" + roomCode + "/" + x;
 function stateMsg() {
   const alive = S.teams.map(() => false), time = S.teams.map(() => null);
   M.ids.forEach((ti, s) => { alive[ti] = M.alive[s]; time[ti] = Math.max(0, Math.round(M.t[s] / 100) / 10); });
-  return { t: "state", teams: S.teams, mode: S.mode, ph: M.ph, cat: cat(), active: M.a == null ? null : M.ids[M.a], inMatch: M.ids, alive, time };
+  const taken = livePhones().filter(p => p.team != null && p.seat).map(p => p.team + p.seat);
+  return { t: "state", alt: S.alt, taken, next: S.teams.map((_, i) => nextSeat(i)), both: S.teams.map((_, i) => bothLive(i)), teams: S.teams, mode: S.mode, ph: M.ph, cat: cat(), active: M.a == null ? null : M.ids[M.a], inMatch: M.ids, alive, time };
 }
 function broadcast() {
   if (!mq || !mq.connected || !M) return;
@@ -487,9 +499,9 @@ function sendTo(id, m) {
 }
 function livePhones() { const now = Date.now(); return Object.values(phones).filter(p => now - p.seen < 20000); }
 function renderPhones() {
-  const counts = S.teams.map(() => 0); let lobby = 0;
-  livePhones().forEach(p => { if (p.team != null && p.team < counts.length) counts[p.team]++; else lobby++; });
-  $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${esc(n)}: <b>${counts[i]}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
+  let lobby = 0; const seats = S.teams.map(() => ({}));
+  livePhones().forEach(p => { if (p.team != null && p.team < seats.length && p.seat) seats[p.team][p.seat] = 1; else lobby++; });
+  $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${esc(n)}: <b>${seats[i].A ? "A ✓" : "A –"}</b> <b>${seats[i].B ? "B ✓" : "B –"}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
 }
 function showJoin() {
   const base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "");
@@ -503,11 +515,18 @@ function showJoin() {
 function onIn(d) {
   if (!d || typeof d !== "object" || typeof d.id !== "string" || d.id.length > 40) return;
   const fresh = !phones[d.id];
-  const p = phones[d.id] || (phones[d.id] = { team: null, seen: 0 });
+  const p = phones[d.id] || (phones[d.id] = { team: null, seat: null, seen: 0 });
   p.seen = Date.now();
-  if (d.team != null) { const ti = +d.team; p.team = ti >= 0 && ti < S.teams.length ? ti : null; }
-  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v3"); }
-  if (d.t === "press") { aud(); remotePress(p.team, d.id); }
+  if (d.t !== "hello" && d.t !== "ping") {}
+  else if (d.team == null) { p.team = null; p.seat = null; }
+  else {
+    const ti = +d.team, seat = d.seat === "B" ? "B" : "A";
+    const holder = livePhones().find(q => q !== p && q.team === ti && q.seat === seat);
+    if (!(ti >= 0 && ti < S.teams.length) || holder) { p.team = null; p.seat = null; sendTo(d.id, { t: "seatTaken" }); }
+    else { p.team = ti; p.seat = seat; }
+  }
+  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v4"); }
+  if (d.t === "press") { aud(); remotePress(p.team, d.id, p.seat); }
 }
 function startNet() {
   if (!window.mqtt) { netSay("Phone buttons couldn't load. Check the internet connection, or use keyboard buttons."); return; }
@@ -516,7 +535,7 @@ function startNet() {
   showJoin();
   netSay("Reaching the game server…");
   mq = mqtt.connect(BROKER, { clientId: "hz-host-" + roomCode + "-" + Math.random().toString(16).slice(2, 8), clean: true, reconnectPeriod: 2000, connectTimeout: 8000 });
-  mq.on("connect", () => { mq.subscribe(T("in")); netSay("Ready for phones · v3. Keyboard buttons still work too."); broadcast(); });
+  mq.on("connect", () => { mq.subscribe(T("in")); netSay("Ready for phones · v4. Keyboard buttons still work too."); broadcast(); });
   mq.on("reconnect", () => netSay("Reconnecting to the game server…"));
   mq.on("offline", () => netSay("Game server offline. Retrying… Keyboard buttons still work."));
   mq.on("error", e => netSay("Game server problem (" + (e && e.message) + "). Retrying…"));

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Holidaze Craze</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: loud game-show stage at a holiday party
+   IDEA: a tournament chess clock blown up to TV size
+   PICTURE: two giant clock faces, the live side lit cranberry red
+   COLOUR and TYPE: pine green ground, cranberry live side, gold warning, snow white; Archivo Black digits, Rubik text
+   LAYOUT: category banner, two clock faces, control strip, scoreboard, settings drawer */
+:root{color-scheme:light dark;--bg:light-dark(#0f3b2e,#082219);--face:light-dark(#165443,#0f3429);--ink:#f6fbf8;--dim:#acd0c2;--live:#c8203a;--live2:#ff6b7d;--gold:#f2c14e;--line:rgba(255,255,255,.16)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding:16px max(3vw,14px) 48px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+h1{font:400 clamp(22px,3vw,30px)/1.05 'Archivo Black',sans-serif;margin:0}
+.cat{margin:14px 0;padding:14px 18px;border-radius:16px;background:var(--face);display:flex;gap:12px 18px;align-items:center;flex-wrap:wrap}
+.cat small{color:var(--dim);font-weight:500;font-size:14px}
+.cat b{font:400 clamp(24px,4vw,42px)/1.1 'Archivo Black',sans-serif;flex:1 1 280px;text-wrap:balance}
+.clock{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.side{position:relative;border-radius:24px;background:var(--face);padding:18px 14px 22px;text-align:center;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation;box-shadow:inset 0 -10px 0 rgba(0,0,0,.25),inset 0 2px 0 rgba(255,255,255,.08);transition:background .15s}
+.side.on{background:var(--live);box-shadow:inset 0 -10px 0 rgba(0,0,0,.25),inset 0 2px 0 rgba(255,255,255,.2),0 0 0 4px var(--live2)}
+.nm{font-weight:700;font-size:clamp(18px,2.6vw,28px);overflow-wrap:anywhere}
+.tm{font:400 clamp(72px,13vw,180px)/1 'Archivo Black',sans-serif;font-variant-numeric:tabular-nums;margin:12px 0 8px;letter-spacing:-.02em}
+.ky{color:var(--dim);font-size:14px}
+.side.on .ky{color:#ffe1e5}
+.tag{display:inline-block;font-size:13px;padding:3px 12px;border-radius:99px;background:rgba(0,0,0,.28);margin-top:8px;min-height:24px}
+.side.low .tm{color:var(--gold);animation:pulse .45s infinite alternate}
+.side.lost{opacity:.5}
+.side.out{opacity:.35}
+.cnt{font-weight:700;font-size:clamp(16px,2vw,20px);margin-top:4px}
+.clock.many{grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))}
+.clock.many .tm{font-size:clamp(52px,7vw,96px)}
+.clock.many .side.on .tm{font-size:clamp(60px,9vw,120px)}
+select{width:100%;font:16px Rubik,sans-serif;min-height:44px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--ink);padding:0 10px}
+select:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+@keyframes pulse{to{transform:scale(1.05)}}
+@media (prefers-reduced-motion:reduce){.side.low .tm{animation:none}}
+.bar{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.b{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--ink);font:500 16px Rubik,sans-serif;cursor:pointer}
+.b:hover{background:rgba(255,255,255,.16)}
+.b.pri{background:var(--gold);color:#1d1500;border-color:var(--gold);font-weight:700}
+.b:focus-visible,input:focus-visible,textarea:focus-visible,.side:focus-visible,summary:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+kbd{font:500 13px Rubik,sans-serif;padding:1px 7px;border-radius:6px;background:rgba(0,0,0,.3);margin-left:8px}
+.msg{min-height:30px;color:var(--gold);font-weight:700;font-size:18px;margin-top:10px}
+h2{font:400 20px/1.1 'Archivo Black',sans-serif;margin:24px 0 8px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{color:var(--dim);font-weight:500;font-size:14px}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.champ td:first-child{color:var(--gold);font-weight:700}
+.adj{min-width:44px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);font-size:18px;cursor:pointer;margin-left:4px}
+.note{color:var(--dim);font-size:14px}
+details{margin-top:22px;background:var(--face);border-radius:16px;padding:4px 16px 14px}
+summary{cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:16px}
+label{display:block;font-size:14px;color:var(--dim);margin:12px 0 4px}
+textarea,input{width:100%;font:16px Rubik,sans-serif;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--ink);padding:10px}
+textarea{min-height:200px;resize:vertical}
+.over{position:fixed;inset:0;background:rgba(4,18,13,.84);display:none;place-items:center;padding:20px;z-index:5}
+.over.show{display:grid}
+.card{background:var(--face);border-radius:24px;padding:28px;max-width:560px;width:100%;text-align:center;box-shadow:0 0 0 4px var(--gold)}
+.card h3{font:400 clamp(28px,5vw,46px)/1.05 'Archivo Black',sans-serif;margin:0 0 10px;text-wrap:balance}
+.card .bar{justify-content:center}
+.nav{display:flex;flex-wrap:wrap;gap:6px}
+.nav a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:500;border:1px solid transparent}
+.nav a:hover{background:rgba(255,255,255,.1)}
+.nav a.cur{background:var(--face);border-color:var(--line);color:var(--gold)}
+.nav a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.soon{background:var(--face);border-radius:16px;padding:18px 20px;margin-top:16px;max-width:760px}
+.soon h2{margin-top:0}
+.lineup{margin:10px 0 0;padding-left:20px}
+.lineup li{margin:6px 0}
+.lineup span{color:var(--dim);font-size:14px}
+.phones{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;background:var(--face);border-radius:16px;padding:16px 18px;margin-top:18px}
+.phones h2{margin:0 0 6px}
+#qr{background:#fff;padding:10px;border-radius:12px;line-height:0}
+#qr img,#qr canvas{width:180px;height:180px}
+.code{font:400 clamp(28px,4vw,40px)/1 'Archivo Black',sans-serif;letter-spacing:.08em;color:var(--gold)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{padding:4px 12px;border-radius:99px;background:rgba(0,0,0,.28);font-size:14px}
+.chip b{color:var(--gold)}
+@media(max-width:600px){.phones{grid-template-columns:minmax(0,1fr)}.clock:not(.many){grid-template-columns:minmax(0,1fr)}.tm{font-size:clamp(64px,22vw,120px);margin:6px 0}.side{padding:12px 12px 16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Holidaze Craze</h1>
+    <nav class="nav" aria-label="Sections">
+      <a href="#clock" data-v="clock">Chess Clock</a>
+      <a href="#scoreboard" data-v="scoreboard">Scoreboard</a>
+      <a href="#challenges" data-v="challenges">Challenges</a>
+    </nav>
+    <button class="b" id="fs">Full screen</button>
+  </header>
+
+  <section class="view" id="v-scoreboard" hidden>
+    <div class="soon">
+      <h2>Scoreboard</h2>
+      <p>Coming next: one running total for every team across the night, shown on the TV. You enter each challenge's result in a few taps.</p>
+      <p class="note">Scoring rules still to decide: placement points (1st = 6, 2nd = 5…), raw scores, or bonus points.</p>
+    </div>
+  </section>
+
+  <section class="view" id="v-challenges" hidden>
+    <div class="soon">
+      <h2>Challenges</h2>
+      <p>Coming next: the night's lineup with rules, timers, and scoring for each round.</p>
+      <ul class="lineup" id="lineup"></ul>
+    </div>
+  </section>
+
+  <section class="view" id="v-clock">
+
+  <div class="cat"><small>Category</small><b id="cat"></b><button class="b" id="nextCat">Next category<kbd>N</kbd></button></div>
+
+  <div class="clock" id="clock"></div>
+
+  <div class="msg" id="msg" aria-live="polite"></div>
+
+  <div class="bar">
+    <button class="b pri" id="go">Start<kbd>Space</kbd></button>
+    <button class="b" id="pen">Wrong answer −5 sec<kbd>P</kbd></button>
+    <button class="b" id="mode">Mode: Head-to-head</button>
+    <button class="b" id="swap">Switch who starts</button>
+    <button class="b" id="resetM">Reset match</button>
+    <button class="b" id="undo">Undo last result</button>
+  </div>
+
+  <section class="phones" id="phones">
+    <div>
+      <h2>Phone buttons</h2>
+      <p class="note" id="netStatus">Connecting…</p>
+      <p style="margin:6px 0">Scan the code, or open <b id="joinUrl">…</b></p>
+      <div class="code" id="roomCode"></div>
+      <div class="chips" id="phoneList"></div>
+    </div>
+    <div id="qr" aria-label="QR code to join"></div>
+  </section>
+
+  <h2>Scoreboard</h2>
+  <table>
+    <thead><tr><th>Team</th><th class="n">Wins</th><th class="n">Answers</th><th class="n">Time left</th><th class="n">Adjust wins</th></tr></thead>
+    <tbody id="sb"></tbody>
+  </table>
+  <p class="note" id="deck"></p>
+
+  <details id="set">
+    <summary>Settings: teams, timer, buttons, categories</summary>
+    <div class="grid">
+      <div><label for="teams">Teams, one per line (2 to 12)</label><textarea id="teams"></textarea></div>
+      <div><label for="cats">Categories, one per line</label><textarea id="cats"></textarea><p class="note">Keep them open (anyone can name 10), not trivia.</p></div>
+      <div>
+        <label for="secs">Seconds per team</label><input id="secs" type="number" min="5" max="300" inputmode="numeric">
+        <label for="pens">Wrong-answer penalty (seconds)</label><input id="pens" type="number" min="0" max="60" inputmode="numeric">
+        <label>Head-to-head buttons (left and right side)</label>
+        <div class="bar" style="margin:0"><button class="b" id="k0"></button><button class="b" id="k1"></button></div>
+        <p class="note">Tap a button above, then press the key or clicker for that side. Tapping a clock face also switches turns.</p>
+        <label for="rank">Rank teams by</label><select id="rank"><option value="wins">Wins (time left breaks ties)</option><option value="ans">Total answers (wins break ties)</option></select>
+        <label>All-teams buttons (one per team)</label><div class="bar" id="tk" style="margin:0"></div>
+        <p class="note">In All-teams mode, a team's button only works on its own turn.</p>
+        <button class="b" id="resetAll" style="margin-top:14px">Reset all scores</button>
+      </div>
+    </div>
+  </details>
+  <p class="note">Space starts and pauses. Head-to-head: each team's button only works on its own turn, and the winner stays on. All teams: every team plays at once with its own button, which only works on that team's turn, and a team is out when its clock runs out. Scores stay in this browser.</p>
+  </section>
+</div>
+
+<div class="over" id="over" role="dialog" aria-modal="true" aria-labelledby="ovT">
+  <div class="card"><h3 id="ovT"></h3><p id="ovP"></p>
+    <div class="bar"><button class="b pri" id="ovGo">Next match<kbd>Enter</kbd></button><button class="b" id="ovUndo">Undo</button></div>
+  </div>
+</div>
+
+<script>
+{
+const $ = id => document.getElementById(id);
+const DEF = {
+  teams: ["Team 1","Team 2","Team 3","Team 4","Team 5","Team 6"],
+  cats: ["Things that are red","Things in a stocking","Things that are cold","Things in a kitchen at Christmas","Words that rhyme with snow","Things that sparkle","Things you can wrap","Things at a holiday party","Things that are green","Things you'd pack for a ski trip","Things that jingle, ring, or beep","Sweet things to eat","Things with wheels","Things you hang on a wall","Things in a toolbox"],
+  secs: 30, pen: 5, keys: ["1","3"], mode: "duel", rank: "wins", gstart: 0
+};
+let S = null;
+try { S = JSON.parse(localStorage.getItem("hcc1")); } catch (e) { S = null; }
+if (!S || !Array.isArray(S.teams) || S.teams.length < 2) S = JSON.parse(JSON.stringify(DEF));
+S.cats = Array.isArray(S.cats) && S.cats.length ? S.cats : DEF.cats.slice();
+S.keys = Array.isArray(S.keys) && S.keys.length === 2 ? S.keys : DEF.keys.slice();
+S.secs = +S.secs || 30; S.pen = S.pen == null ? 5 : +S.pen; S.ci = +S.ci || 0;
+S.mode = S.mode === "group" ? "group" : "duel"; S.rank = S.rank === "ans" ? "ans" : "wins"; S.gstart = +S.gstart || 0;
+fixArrays();
+if (!Array.isArray(S.order) || S.order.length !== S.teams.length) S.order = S.teams.map((_, i) => i);
+
+function fixArrays() {
+  const f = k => S.teams.map((_, i) => (S[k] && +S[k][i]) || 0);
+  S.pts = f("pts"); S.left = f("left"); S.ans = f("ans");
+  const dk = "1234567890qwer";
+  S.tkeys = S.teams.map((_, i) => (S.tkeys && S.tkeys[i]) || dk[i] || String(i));
+}
+function save() { try { localStorage.setItem("hcc1", JSON.stringify(S)); } catch (e) {} }
+
+let M, undoSnap = null, assign = null, prev = performance.now(), resetArm = 0;
+function newMatch() {
+  let ids;
+  if (S.mode === "duel") ids = [S.order[0], S.order[1]];
+  else { const n = S.teams.length, g = S.gstart % n; ids = S.teams.map((_, i) => (i + g) % n); }
+  M = { ids, t: ids.map(() => S.secs * 1000), c: ids.map(() => 0), alive: ids.map(() => true), outOrder: [],
+        a: null, st: S.mode === "duel" ? 1 : 0, ph: "ready", lastSw: 0, loser: null };
+  $("over").classList.remove("show");
+  build(); render();
+}
+
+let ac = null;
+function aud() { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === "suspended") ac.resume(); } catch (e) {} }
+function tone(f, d, type, v) {
+  if (!ac) return;
+  try {
+    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + d);
+  } catch (e) {}
+}
+const clickSnd = () => tone(880, 0.08, "triangle", 0.25);
+const buzz = () => { tone(150, 1.0, "sawtooth", 0.3); tone(112, 1.0, "square", 0.18); };
+const outSnd = () => tone(220, 0.5, "sawtooth", 0.22);
+
+const keyName = k => k === " " ? "Space" : k.length === 1 ? k.toUpperCase() : k;
+const fmt = t => t >= 10000 ? String(Math.ceil(t / 1000)) : (Math.max(t, 0) / 1000).toFixed(1);
+const cat = () => S.cats[S.ci % S.cats.length];
+const tn = s => S.teams[M.ids[s]];
+function say(t) { $("msg").textContent = t; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function build() {
+  const cl = $("clock");
+  cl.classList.toggle("many", S.mode === "group");
+  cl.innerHTML = M.ids.map((_, s) => `<div class="side" data-s="${s}" role="button" tabindex="0"><div class="nm"></div><div class="tm"></div><div class="cnt"></div><div class="ky"></div><div class="tag"></div></div>`).join("");
+}
+function render() {
+  const duel = S.mode === "duel";
+  $("clock").querySelectorAll(".side").forEach(el => {
+    const s = +el.dataset.s;
+    el.querySelector(".nm").textContent = tn(s);
+    el.querySelector(".ky").textContent = "Button: " + keyName(duel ? S.keys[s] : S.tkeys[M.ids[s]]);
+    let tag = duel ? (s === 0 ? "At the table" : "Challenger") : (M.alive[s] ? "In" : "Out (" + ordinal(M.ids.length - M.outOrder.indexOf(s)) + ")");
+    if (M.ph === "ready" && M.st === s) tag += " · starts";
+    el.querySelector(".tag").textContent = tag;
+    el.classList.toggle("on", (M.ph === "run" || M.ph === "pause") && M.a === s);
+    el.classList.toggle("lost", duel && M.ph === "over" && M.loser === s);
+    el.classList.toggle("out", !duel && !M.alive[s]);
+  });
+  $("go").firstChild.textContent = M.ph === "run" ? "Pause" : M.ph === "pause" ? "Resume" : "Start";
+  $("mode").textContent = "Mode: " + (duel ? "Head-to-head" : "All teams");
+  $("mode").disabled = M.ph === "run" || M.ph === "pause";
+  $("swap").disabled = M.ph !== "ready";
+  $("undo").disabled = !undoSnap;
+  $("cat").textContent = cat();
+  $("k0").textContent = "Left: " + keyName(S.keys[0]);
+  $("k1").textContent = "Right: " + keyName(S.keys[1]);
+  $("rank").value = S.rank;
+  $("tk").innerHTML = S.teams.map((n, i) => `<button class="b" data-t="${i}">${assign === "t" + i ? "Press a key…" : esc(n) + ": " + esc(keyName(S.tkeys[i]))}</button>`).join("");
+  const rows = S.teams.map((n, i) => ({ n, i, p: S.pts[i], l: S.left[i], a: S.ans[i] }))
+    .sort((x, y) => S.rank === "ans" ? (y.a - x.a || y.p - x.p) : (y.p - x.p || y.l - x.l));
+  $("sb").innerHTML = rows.map(r => `<tr class="${duel && r.i === S.order[0] ? "champ" : ""}"><td>${esc(r.n)}</td><td class="n">${r.p}</td><td class="n">${r.a}</td><td class="n">${r.l.toFixed(1)} s</td><td class="n"><button class="adj" data-i="${r.i}" data-d="-1" aria-label="Remove a win from ${esc(r.n)}">−</button><button class="adj" data-i="${r.i}" data-d="1" aria-label="Add a win to ${esc(r.n)}">+</button></td></tr>`).join("");
+  const q = S.order.slice(2).map(i => S.teams[i]);
+  $("deck").textContent = duel && q.length ? "On deck: " + q.join(", ") : (duel ? "" : "Each team's own button passes the turn. Pressing out of turn does nothing.");
+  draw();
+  broadcast();
+}
+function draw() {
+  $("clock").querySelectorAll(".side").forEach(el => {
+    const s = +el.dataset.s;
+    el.querySelector(".tm").textContent = fmt(M.t[s]);
+    el.querySelector(".cnt").textContent = M.c[s] + (M.c[s] === 1 ? " answer" : " answers");
+    el.classList.toggle("low", M.ph === "run" && M.a === s && M.t[s] < 5000);
+  });
+}
+function ordinal(n) { return n + (n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"); }
+function nextAlive(s) {
+  const n = M.ids.length;
+  for (let k = 1; k <= n; k++) { const j = (s + k) % n; if (M.alive[j]) return j; }
+  return s;
+}
+
+function tick(now) {
+  const dt = now - prev; prev = now;
+  if (M.ph === "run") {
+    M.t[M.a] -= dt;
+    if (M.t[M.a] <= 0) { M.t[M.a] = 0; timeout(M.a); }
+  }
+  draw();
+  requestAnimationFrame(tick);
+}
+function timeout(s) {
+  if (S.mode === "duel") { finishDuel(s); return; }
+  M.alive[s] = false; M.outOrder.push(s);
+  const left = M.alive.filter(Boolean).length;
+  if (left <= 1) { finishGroup(); return; }
+  outSnd(); M.a = nextAlive(s); M.lastSw = performance.now();
+  say(tn(s) + " is out. " + tn(M.a) + "'s turn.");
+  render();
+}
+
+function go() {
+  aud();
+  if (M.ph === "ready") { M.ph = "run"; M.a = M.st; M.lastSw = performance.now(); say(tn(M.a) + " goes first"); }
+  else if (M.ph === "run") { M.ph = "pause"; say("Paused"); }
+  else if (M.ph === "pause") { M.ph = "run"; say(""); }
+  render();
+}
+function press(s) {
+  aud();
+  const now = performance.now();
+  if (M.ph !== "run" || now - M.lastSw < 250) return;
+  if (S.mode === "duel" && M.a !== s) return;
+  M.c[M.a] += 1; M.a = nextAlive(M.a); M.lastSw = now; clickSnd(); say(""); render();
+}
+function pressTeam(ti) {
+  aud();
+  if (M.ph !== "run") return;
+  const s = M.ids.indexOf(ti);
+  if (s === M.a) { press(s); return; }
+  if (s >= 0 && M.alive[s]) { tone(180, 0.15, "square", 0.15); say("Not your turn, " + S.teams[ti] + ". It's " + tn(M.a) + "'s turn."); }
+}
+function remotePress(ti, c) {
+  if (ti == null || ti < 0 || ti >= S.teams.length) return;
+  const ok = M.ph === "run" && M.ids[M.a] === ti;
+  if (ok) { press(M.a); return; }
+  if (M.ph === "run" && M.ids.indexOf(ti) >= 0 && M.alive[M.ids.indexOf(ti)]) {
+    tone(180, 0.15, "square", 0.15); say("Not your turn, " + S.teams[ti] + ". It's " + tn(M.a) + "'s turn.");
+  }
+  try { c.send({ t: "nope" }); } catch (e) {}
+}
+function pen() {
+  if (M.ph !== "run" && M.ph !== "pause") return;
+  M.t[M.a] = Math.max(0, M.t[M.a] - S.pen * 1000);
+  say("−" + S.pen + " sec for " + tn(M.a));
+  if (M.t[M.a] <= 0 && M.ph === "run") timeout(M.a); else draw();
+}
+function snap() { undoSnap = JSON.stringify({ order: S.order, pts: S.pts, left: S.left, ans: S.ans, gstart: S.gstart }); }
+function addAnswers() { M.ids.forEach((ti, s) => { S.ans[ti] += M.c[s]; }); }
+function finishDuel(ls) {
+  M.ph = "over"; M.loser = ls; snap();
+  const w = 1 - ls, wt = M.ids[w], lt = M.ids[ls], leftS = Math.round(M.t[w] / 100) / 10;
+  S.pts[wt] += 1; S.left[wt] = Math.round((S.left[wt] + leftS) * 10) / 10; addAnswers();
+  const q = S.order.slice(2); q.push(lt);
+  S.order = [wt].concat(q);
+  save(); buzz();
+  $("ovT").textContent = S.teams[wt] + " wins!";
+  $("ovP").textContent = `${leftS.toFixed(1)} seconds left. Answers: ${S.teams[wt]} ${M.c[w]}, ${S.teams[lt]} ${M.c[ls]}. Next: ${S.teams[S.order[0]]} vs ${S.teams[S.order[1]]}.`;
+  $("over").classList.add("show"); $("ovGo").focus();
+  render();
+}
+function finishGroup() {
+  M.ph = "over"; snap();
+  const w = M.alive.indexOf(true), wt = M.ids[w], leftS = Math.round(M.t[w] / 100) / 10;
+  S.pts[wt] += 1; S.left[wt] = Math.round((S.left[wt] + leftS) * 10) / 10; addAnswers();
+  S.gstart = (S.gstart + 1) % S.teams.length;
+  save(); buzz();
+  const places = [w].concat(M.outOrder.slice().reverse());
+  $("ovT").textContent = S.teams[wt] + " is last standing!";
+  $("ovP").textContent = places.map((s, k) => `${ordinal(k + 1)} ${tn(s)} (${M.c[s]})`).join(" · ") + ". Numbers are answers given.";
+  $("over").classList.add("show"); $("ovGo").focus();
+  render();
+}
+function next() { S.ci = (S.ci + 1) % S.cats.length; save(); say(""); newMatch(); }
+function undo() {
+  if (!undoSnap) return;
+  const u = JSON.parse(undoSnap); Object.assign(S, u); undoSnap = null;
+  save(); say("Last result undone"); newMatch();
+}
+
+const LINEUP = [["Reindeer Catapult", "build and launch"], ["Candy Cane Bridge", "build and load test"], ["Holiday Hotline", "phone a friend"], ["Holiday Chess Clock", "phone buzzers, built"], ["Face Hole", "cornhole"], ["Santa's Beard", "messy"], ["Saran wrap ball", "finale"]];
+$("lineup").innerHTML = LINEUP.map(([n, d]) => `<li>${esc(n)} <span>${esc(d)}</span></li>`).join("");
+let view = "clock";
+function route() {
+  const h = (location.hash || "#clock").slice(1);
+  view = ["clock", "scoreboard", "challenges"].includes(h) ? h : "clock";
+  document.querySelectorAll(".view").forEach(v => { v.hidden = v.id !== "v-" + view; });
+  document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("cur", a.dataset.v === view));
+}
+addEventListener("hashchange", route);
+route();
+
+addEventListener("keydown", e => {
+  if (e.target && e.target.matches && e.target.matches("textarea,input,select")) return;
+  if (view !== "clock" && assign === null) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (assign !== null) {
+    e.preventDefault();
+    if (k !== "Escape") { if (typeof assign === "string") S.tkeys[+assign.slice(1)] = k; else S.keys[assign] = k; }
+    assign = null; save(); render(); return;
+  }
+  if (e.repeat) { if (k === " " || S.keys.includes(k) || S.tkeys.includes(k)) e.preventDefault(); return; }
+  if (S.mode === "group") {
+    const ti = S.tkeys.indexOf(k);
+    if (ti >= 0) { e.preventDefault(); pressTeam(ti); return; }
+  } else if (k === S.keys[0] || k === S.keys[1]) { e.preventDefault(); press(k === S.keys[0] ? 0 : 1); return; }
+  if (M.ph === "over") { if (k === " " || k === "Enter") { e.preventDefault(); next(); } return; }
+  if (k === " ") { e.preventDefault(); go(); }
+  else if (k === "p") pen();
+  else if (k === "n") { S.ci = (S.ci + 1) % S.cats.length; save(); render(); }
+});
+
+$("clock").addEventListener("pointerdown", e => {
+  const el = e.target.closest(".side"); if (!el) return;
+  e.preventDefault(); const s = +el.dataset.s;
+  if (S.mode === "group" && s !== M.a) return;
+  press(s);
+});
+$("go").addEventListener("click", e => { e.currentTarget.blur(); go(); });
+$("pen").addEventListener("click", e => { e.currentTarget.blur(); pen(); });
+$("mode").addEventListener("click", e => {
+  e.currentTarget.blur();
+  if (M.ph === "run" || M.ph === "pause") return;
+  S.mode = S.mode === "duel" ? "group" : "duel"; save(); say(""); newMatch();
+});
+$("swap").addEventListener("click", e => { e.currentTarget.blur(); if (M.ph === "ready") { M.st = S.mode === "duel" ? 1 - M.st : (M.st + 1) % M.ids.length; render(); } });
+$("resetM").addEventListener("click", e => { e.currentTarget.blur(); say("Match reset"); newMatch(); });
+$("undo").addEventListener("click", undo);
+$("ovUndo").addEventListener("click", undo);
+$("ovGo").addEventListener("click", next);
+$("nextCat").addEventListener("click", e => { e.currentTarget.blur(); S.ci = (S.ci + 1) % S.cats.length; save(); render(); });
+$("sb").addEventListener("click", e => {
+  const b = e.target.closest(".adj"); if (!b) return;
+  const i = +b.dataset.i; S.pts[i] = Math.max(0, S.pts[i] + +b.dataset.d); save(); render();
+});
+$("fs").addEventListener("click", () => {
+  try { const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(() => say("Full screen isn't available here")); }
+  catch (e) { say("Full screen isn't available here"); }
+});
+[0, 1].forEach(s => $("k" + s).addEventListener("click", () => { assign = s; $("k" + s).textContent = "Press a key…"; }));
+$("tk").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (!b) return; assign = "t" + b.dataset.t; render(); });
+
+$("teams").value = S.teams.join("\n");
+$("cats").value = S.cats.join("\n");
+$("secs").value = S.secs; $("pens").value = S.pen;
+$("teams").addEventListener("change", () => { setTimeout(renderPhones, 0);
+  const names = $("teams").value.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 12);
+  if (names.length < 2) { say("You need at least 2 teams"); return; }
+  const changed = names.length !== S.teams.length;
+  S.teams = names; fixArrays();
+  if (changed) { S.order = names.map((_, i) => i); S.gstart = 0; undoSnap = null; }
+  save(); newMatch();
+});
+$("cats").addEventListener("change", () => {
+  const c = $("cats").value.split("\n").map(x => x.trim()).filter(Boolean);
+  if (c.length) { S.cats = c; S.ci = 0; save(); render(); }
+});
+$("secs").addEventListener("change", () => { S.secs = Math.min(300, Math.max(5, +$("secs").value || 30)); $("secs").value = S.secs; save(); if (M.ph === "ready") newMatch(); });
+$("pens").addEventListener("change", () => { S.pen = Math.min(60, Math.max(0, +$("pens").value || 0)); $("pens").value = S.pen; save(); });
+$("rank").addEventListener("change", () => { S.rank = $("rank").value === "ans" ? "ans" : "wins"; save(); render(); });
+$("resetAll").addEventListener("click", () => {
+  const now = Date.now();
+  if (now - resetArm > 3000) { resetArm = now; $("resetAll").textContent = "Tap again to reset"; setTimeout(() => { $("resetAll").textContent = "Reset all scores"; }, 3000); return; }
+  resetArm = 0; S.pts = S.teams.map(() => 0); S.left = S.teams.map(() => 0); S.ans = S.teams.map(() => 0);
+  S.order = S.teams.map((_, i) => i); S.gstart = 0; undoSnap = null;
+  $("resetAll").textContent = "Reset all scores"; save(); say("Scores reset"); newMatch();
+});
+
+let peer = null, conns = [], roomCode = null, idTries = 0;
+function genCode() { const a = "ABCDEFGHJKMNPQRSTUVWXYZ"; let x = ""; for (let i = 0; i < 5; i++) x += a[Math.floor(Math.random() * a.length)]; return x; }
+function netSay(t) { $("netStatus").textContent = t; }
+function stateMsg() {
+  const alive = S.teams.map(() => false), time = S.teams.map(() => null);
+  M.ids.forEach((ti, s) => { alive[ti] = M.alive[s]; time[ti] = Math.max(0, Math.round(M.t[s] / 100) / 10); });
+  return { t: "state", teams: S.teams, mode: S.mode, ph: M.ph, cat: cat(), active: M.a == null ? null : M.ids[M.a], inMatch: M.ids, alive, time };
+}
+function broadcast() {
+  if (!conns.length || !M) return;
+  const m = stateMsg();
+  conns.forEach(x => { try { if (x.c.open) x.c.send(m); } catch (e) {} });
+}
+function renderPhones() {
+  const counts = S.teams.map(() => 0); let lobby = 0;
+  conns.forEach(x => { if (x.team != null && x.team < counts.length) counts[x.team]++; else lobby++; });
+  $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${esc(n)}: <b>${counts[i]}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
+}
+function showJoin() {
+  const base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "");
+  const url = base + "play.html?room=" + roomCode;
+  $("joinUrl").textContent = url.replace(/^https?:\/\//, "");
+  $("roomCode").textContent = roomCode;
+  $("qr").innerHTML = "";
+  try { new QRCode($("qr"), { text: url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $("qr").style.display = "none"; }
+  netSay("Ready for phones. Keyboard buttons still work too.");
+  renderPhones();
+}
+function onData(c, d) {
+  const x = conns.find(y => y.c === c); if (!x || !d || typeof d !== "object") return;
+  if (d.t === "hello") { const ti = +d.team; x.team = ti >= 0 && ti < S.teams.length ? ti : null; renderPhones(); try { c.send(stateMsg()); } catch (e) {} }
+  else if (d.t === "press") { aud(); remotePress(x.team, c); }
+}
+function openPeer() {
+  try { if (peer) peer.destroy(); } catch (e) {}
+  peer = new Peer("holidaze-" + roomCode);
+  peer.on("open", () => { idTries = 0; try { localStorage.setItem("hccRoom", roomCode); } catch (e) {} showJoin(); });
+  peer.on("connection", c => {
+    c.on("open", () => { conns.push({ c, team: null }); try { c.send(stateMsg()); } catch (e) {} renderPhones(); });
+    c.on("data", d => onData(c, d));
+    c.on("close", () => { conns = conns.filter(x => x.c !== c); renderPhones(); });
+    c.on("error", () => {});
+  });
+  peer.on("disconnected", () => { netSay("Phone link dropped. Reconnecting…"); setTimeout(() => { try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) {} }, 1500); });
+  peer.on("error", err => {
+    if (err && err.type === "unavailable-id") {
+      idTries++;
+      if (idTries <= 3) { netSay("Reclaiming game code " + roomCode + "…"); setTimeout(openPeer, 3000); }
+      else { roomCode = genCode(); idTries = 0; openPeer(); }
+    } else if (err && err.type === "peer-unavailable") {
+    } else { netSay("Phone link problem (" + (err && err.type) + "). Retrying…"); setTimeout(openPeer, 4000); }
+  });
+}
+function startNet() {
+  if (!window.Peer) { netSay("Phone buttons couldn't load. Check the internet connection, or use keyboard buttons."); return; }
+  try { roomCode = localStorage.getItem("hccRoom"); } catch (e) {}
+  if (!roomCode) roomCode = genCode();
+  openPeer();
+}
+setInterval(() => { if (M && M.ph === "run") broadcast(); }, 400);
+
+newMatch();
+startNet();
+requestAnimationFrame(t => { prev = t; requestAnimationFrame(tick); });
+}
+</script>
+</body>
+</html>

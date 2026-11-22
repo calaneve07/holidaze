@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0f3b2e">
+<title>Holidaze Button</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+/* VOICE: one job, one giant button
+   IDEA: a game-show buzzer in your hand
+   PICTURE: a full-width round button that glows on your turn
+   COLOUR and TYPE: pine green, cranberry live, gold warning; Archivo Black + Rubik
+   LAYOUT: team bar, category, button, status */
+:root{--bg:#0f3b2e;--face:#165443;--ink:#f6fbf8;--dim:#acd0c2;--live:#c8203a;--live2:#ff6b7d;--gold:#f2c14e;--line:rgba(255,255,255,.16)}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Rubik,system-ui,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
+.view{height:100%;display:flex;flex-direction:column;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom))}
+h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
+.note{color:var(--dim);font-size:15px;margin:0 0 14px}
+.list{display:grid;gap:10px;overflow:auto}
+.team{min-height:56px;border-radius:14px;border:1px solid var(--line);background:var(--face);color:var(--ink);font:700 19px Rubik,sans-serif;text-align:left;padding:0 18px}
+.team:active{background:var(--live)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.me{font:400 22px/1.1 'Archivo Black',sans-serif}
+.chg{min-height:44px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px Rubik,sans-serif;padding:0 14px}
+.cat{margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--face);font-weight:700;font-size:18px;text-align:center;min-height:48px}
+.stage{flex:1;display:grid;place-items:center;padding:16px 0}
+#btn{width:min(78vw,52vh,380px);aspect-ratio:1;border-radius:50%;border:0;background:#2a6a57;color:var(--ink);font:400 clamp(28px,9vw,44px)/1.05 'Archivo Black',sans-serif;box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25);touch-action:manipulation;transition:background .12s,transform .06s}
+#btn.live{background:var(--live);box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25),0 0 0 8px var(--live2),0 0 40px 10px rgba(255,107,125,.55);animation:glow 1s infinite alternate}
+#btn.down{transform:translateY(6px) scale(.98)}
+#btn.off{background:#20493d;color:var(--dim)}
+@keyframes glow{to{box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25),0 0 0 12px var(--live2),0 0 60px 18px rgba(255,107,125,.7)}}
+@media (prefers-reduced-motion:reduce){#btn.live{animation:none}}
+.status{text-align:center;font-weight:700;font-size:20px;min-height:30px}
+.time{text-align:center;color:var(--dim);font-size:16px;min-height:24px;font-variant-numeric:tabular-nums}
+.flash{color:var(--gold)}
+.conn{text-align:center;color:var(--dim);font-size:13px;margin-top:6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="view" id="join">
+  <h1>Holidaze Craze</h1>
+  <p class="note" id="joinNote">Connecting to the game…</p>
+  <div class="list" id="teams"></div>
+</div>
+
+<div class="view" id="pad" hidden>
+  <div class="top"><div class="me" id="me"></div><button class="chg" id="chg">Change team</button></div>
+  <div class="cat" id="cat"></div>
+  <div class="stage"><button id="btn" class="off" aria-label="Buzzer">WAIT</button></div>
+  <div class="status" id="status" aria-live="polite"></div>
+  <div class="time" id="time"></div>
+  <div class="conn" id="conn"></div>
+</div>
+
+<script>
+{
+const $ = id => document.getElementById(id);
+const room = (new URLSearchParams(location.search).get("room") || "").toUpperCase().replace(/[^A-Z]/g, "");
+let peer = null, conn = null, state = null, retryT = null, flashT = null, wake = null;
+let myTeam = null;
+try { const v = localStorage.getItem("hccTeam-" + room); if (v !== null) myTeam = +v; } catch (e) {}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function send(m) { try { if (conn && conn.open) conn.send(m); } catch (e) {} }
+function connText(t) { $("conn").textContent = t; $("joinNote").textContent = t; }
+
+function connect() {
+  clearTimeout(retryT);
+  if (!room) { connText("This link is missing the game code. Scan the QR code on the TV again."); return; }
+  if (!window.Peer) { connText("Couldn't load. Check your internet connection and reload."); return; }
+  try { if (peer) peer.destroy(); } catch (e) {}
+  connText("Connecting to game " + room + "…");
+  peer = new Peer();
+  peer.on("open", () => {
+    conn = peer.connect("holidaze-" + room, { reliable: true });
+    conn.on("open", () => {
+      connText("Connected to game " + room);
+      if (myTeam != null) send({ t: "hello", team: myTeam });
+    });
+    conn.on("data", onData);
+    conn.on("close", retry);
+    conn.on("error", retry);
+  });
+  peer.on("error", e => {
+    connText(e && e.type === "peer-unavailable" ? "Can't find game " + room + ". Is the TV page open? Retrying…" : "Connection problem. Retrying…");
+    retry();
+  });
+}
+function retry() { clearTimeout(retryT); retryT = setTimeout(connect, 2500); }
+
+function onData(d) {
+  if (!d || typeof d !== "object") return;
+  if (d.t === "state") { state = d; render(); }
+  else if (d.t === "nope") flash("Not your turn!");
+}
+function flash(t) {
+  const el = $("status"); el.textContent = t; el.classList.add("flash");
+  clearTimeout(flashT); flashT = setTimeout(() => { el.classList.remove("flash"); render(); }, 1200);
+}
+function pickTeam(i) {
+  myTeam = i;
+  try { localStorage.setItem("hccTeam-" + room, String(i)); } catch (e) {}
+  send({ t: "hello", team: i });
+  askWake(); render();
+}
+function render() {
+  if (!state) return;
+  const valid = myTeam != null && myTeam >= 0 && myTeam < state.teams.length;
+  $("join").hidden = valid; $("pad").hidden = !valid;
+  if (!valid) {
+    $("joinNote").textContent = "Tap your team.";
+    $("teams").innerHTML = state.teams.map((n, i) => `<button class="team" data-i="${i}">${esc(n)}</button>`).join("");
+    return;
+  }
+  $("me").textContent = state.teams[myTeam];
+  $("cat").textContent = state.cat || "";
+  const inMatch = state.inMatch.indexOf(myTeam) >= 0;
+  const mine = state.active === myTeam && (state.ph === "run" || state.ph === "pause");
+  let label = "WAIT", st = "", cls = "off";
+  if (!inMatch) { st = state.mode === "duel" ? "Not your match. Watch the TV." : "Not playing this round."; }
+  else if (state.ph === "ready") { st = "Get ready…"; }
+  else if (state.ph === "over") { st = "Round over. Watch the TV."; }
+  else if (!state.alive[myTeam]) { label = "OUT"; st = "Your team is out this round."; }
+  else if (mine) { label = state.ph === "pause" ? "PAUSED" : "TAP AFTER YOUR ANSWER"; st = state.ph === "pause" ? "Paused" : "Your turn!"; cls = "live"; }
+  else { st = "Wait for your turn."; cls = ""; }
+  const b = $("btn"); b.className = cls; b.textContent = label;
+  if (!$("status").classList.contains("flash")) $("status").textContent = st;
+  const tm = state.time && state.time[myTeam];
+  $("time").textContent = inMatch && tm != null ? tm.toFixed(1) + " seconds left" : "";
+}
+
+$("teams").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) pickTeam(+b.dataset.i); });
+$("chg").addEventListener("click", () => { myTeam = null; try { localStorage.removeItem("hccTeam-" + room); } catch (e) {} render(); });
+$("btn").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  askWake();
+  const b = $("btn"); b.classList.add("down"); setTimeout(() => b.classList.remove("down"), 120);
+  try { if (navigator.vibrate) navigator.vibrate(25); } catch (er) {}
+  send({ t: "press" });
+});
+document.addEventListener("contextmenu", e => e.preventDefault());
+
+async function askWake() {
+  try { if ("wakeLock" in navigator && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    askWake();
+    if (!conn || !conn.open) connect();
+  }
+});
+
+connect();
+}
+</script>
+</body>
+</html>

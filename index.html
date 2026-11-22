@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Holidaze Craze</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -331,14 +331,14 @@ function pressTeam(ti) {
   if (s === M.a) { press(s); return; }
   if (s >= 0 && M.alive[s]) { tone(180, 0.15, "square", 0.15); say("Not your turn, " + S.teams[ti] + ". It's " + tn(M.a) + "'s turn."); }
 }
-function remotePress(ti, c) {
+function remotePress(ti, id) {
   if (ti == null || ti < 0 || ti >= S.teams.length) return;
   const ok = M.ph === "run" && M.ids[M.a] === ti;
   if (ok) { press(M.a); return; }
   if (M.ph === "run" && M.ids.indexOf(ti) >= 0 && M.alive[M.ids.indexOf(ti)]) {
     tone(180, 0.15, "square", 0.15); say("Not your turn, " + S.teams[ti] + ". It's " + tn(M.a) + "'s turn.");
   }
-  try { c.send({ t: "nope" }); } catch (e) {}
+  sendTo(id, { t: "nope" });
 }
 function pen() {
   if (M.ph !== "run" && M.ph !== "pause") return;
@@ -467,23 +467,28 @@ $("resetAll").addEventListener("click", () => {
   $("resetAll").textContent = "Reset all scores"; save(); say("Scores reset"); newMatch();
 });
 
-let peer = null, conns = [], roomCode = null, idTries = 0;
-const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" }] };
+const BROKER = "wss://broker.emqx.io:8084/mqtt";
+let mq = null, phones = {}, roomCode = null;
 function genCode() { const a = "ABCDEFGHJKMNPQRSTUVWXYZ"; let x = ""; for (let i = 0; i < 5; i++) x += a[Math.floor(Math.random() * a.length)]; return x; }
 function netSay(t) { $("netStatus").textContent = t; }
+const T = x => "holidaze/" + roomCode + "/" + x;
 function stateMsg() {
   const alive = S.teams.map(() => false), time = S.teams.map(() => null);
   M.ids.forEach((ti, s) => { alive[ti] = M.alive[s]; time[ti] = Math.max(0, Math.round(M.t[s] / 100) / 10); });
   return { t: "state", teams: S.teams, mode: S.mode, ph: M.ph, cat: cat(), active: M.a == null ? null : M.ids[M.a], inMatch: M.ids, alive, time };
 }
 function broadcast() {
-  if (!conns.length || !M) return;
-  const m = stateMsg();
-  conns.forEach(x => { try { if (x.c.open) x.c.send(m); } catch (e) {} });
+  if (!mq || !mq.connected || !M) return;
+  try { mq.publish(T("state"), JSON.stringify(stateMsg()), { retain: true, qos: 0 }); } catch (e) {}
 }
+function sendTo(id, m) {
+  if (!mq || !mq.connected || typeof id !== "string") return;
+  try { mq.publish(T("to/" + id), JSON.stringify(m), { qos: 0 }); } catch (e) {}
+}
+function livePhones() { const now = Date.now(); return Object.values(phones).filter(p => now - p.seen < 20000); }
 function renderPhones() {
   const counts = S.teams.map(() => 0); let lobby = 0;
-  conns.forEach(x => { if (x.team != null && x.team < counts.length) counts[x.team]++; else lobby++; });
+  livePhones().forEach(p => { if (p.team != null && p.team < counts.length) counts[p.team]++; else lobby++; });
   $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${esc(n)}: <b>${counts[i]}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
 }
 function showJoin() {
@@ -493,44 +498,32 @@ function showJoin() {
   $("roomCode").textContent = roomCode;
   $("qr").innerHTML = "";
   try { new QRCode($("qr"), { text: url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $("qr").style.display = "none"; }
-  netSay("Ready for phones. Keyboard buttons still work too.");
   renderPhones();
 }
-function onData(c, d) {
-  const x = conns.find(y => y.c === c); if (!x || !d || typeof d !== "object") return;
-  if (d.t === "hello") { const ti = +d.team; x.team = ti >= 0 && ti < S.teams.length ? ti : null; renderPhones(); try { c.send(stateMsg()); } catch (e) {} }
-  else if (d.t === "press") { aud(); remotePress(x.team, c); }
-}
-function openPeer() {
-  try { if (peer) peer.destroy(); } catch (e) {}
-  netSay("Reaching the game server…");
-  peer = new Peer("holidaze-" + roomCode, { config: ICE, debug: 1 });
-  peer.on("open", () => { idTries = 0; try { localStorage.setItem("hccRoom", roomCode); } catch (e) {} showJoin(); });
-  peer.on("connection", c => {
-    netSay("A phone is connecting…");
-    const slow = setTimeout(() => { if (!c.open) netSay("A phone reached the game but couldn't finish linking. Usually a network block: guest Wi-Fi, a VPN, or cellular data. Put the phone on the same Wi-Fi as this laptop."); }, 15000);
-    c.on("open", () => {
-      clearTimeout(slow); netSay("Phone connected. Ready for more phones · v2"); conns.push({ c, team: null }); try { c.send(stateMsg()); } catch (e) {} renderPhones(); });
-    c.on("data", d => onData(c, d));
-    c.on("close", () => { conns = conns.filter(x => x.c !== c); renderPhones(); });
-    c.on("error", () => {});
-  });
-  peer.on("disconnected", () => { netSay("Phone link dropped. Reconnecting…"); setTimeout(() => { try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) {} }, 1500); });
-  peer.on("error", err => {
-    if (err && err.type === "unavailable-id") {
-      idTries++;
-      if (idTries <= 3) { netSay("Reclaiming game code " + roomCode + "…"); setTimeout(openPeer, 3000); }
-      else { roomCode = genCode(); idTries = 0; openPeer(); }
-    } else if (err && err.type === "peer-unavailable") {
-    } else { netSay("Phone link problem (" + (err && err.type) + "). Retrying…"); setTimeout(openPeer, 4000); }
-  });
+function onIn(d) {
+  if (!d || typeof d !== "object" || typeof d.id !== "string" || d.id.length > 40) return;
+  const fresh = !phones[d.id];
+  const p = phones[d.id] || (phones[d.id] = { team: null, seen: 0 });
+  p.seen = Date.now();
+  if (d.team != null) { const ti = +d.team; p.team = ti >= 0 && ti < S.teams.length ? ti : null; }
+  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v3"); }
+  if (d.t === "press") { aud(); remotePress(p.team, d.id); }
 }
 function startNet() {
-  if (!window.Peer) { netSay("Phone buttons couldn't load. Check the internet connection, or use keyboard buttons."); return; }
+  if (!window.mqtt) { netSay("Phone buttons couldn't load. Check the internet connection, or use keyboard buttons."); return; }
   try { roomCode = localStorage.getItem("hccRoom"); } catch (e) {}
-  if (!roomCode) roomCode = genCode();
-  openPeer();
+  if (!roomCode) { roomCode = genCode(); try { localStorage.setItem("hccRoom", roomCode); } catch (e) {} }
+  showJoin();
+  netSay("Reaching the game server…");
+  mq = mqtt.connect(BROKER, { clientId: "hz-host-" + roomCode + "-" + Math.random().toString(16).slice(2, 8), clean: true, reconnectPeriod: 2000, connectTimeout: 8000 });
+  mq.on("connect", () => { mq.subscribe(T("in")); netSay("Ready for phones · v3. Keyboard buttons still work too."); broadcast(); });
+  mq.on("reconnect", () => netSay("Reconnecting to the game server…"));
+  mq.on("offline", () => netSay("Game server offline. Retrying… Keyboard buttons still work."));
+  mq.on("error", e => netSay("Game server problem (" + (e && e.message) + "). Retrying…"));
+  mq.on("message", (t, buf) => { let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; } onIn(d); });
 }
+setInterval(renderPhones, 5000);
+setInterval(broadcast, 3000);
 setInterval(() => { if (M && M.ph === "run") broadcast(); }, 400);
 
 newMatch();

@@ -7,7 +7,7 @@
 <title>Holidaze Button</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
 /* VOICE: one job, one giant button
    IDEA: a game-show buzzer in your hand
@@ -62,50 +62,51 @@ h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
 {
 const $ = id => document.getElementById(id);
 const room = (new URLSearchParams(location.search).get("room") || "").toUpperCase().replace(/[^A-Z]/g, "");
-let peer = null, conn = null, state = null, retryT = null, flashT = null, wake = null, connT = null;
-const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" }] };
+const BROKER = "wss://broker.emqx.io:8084/mqtt";
+let mq = null, state = null, flashT = null, wake = null, lastState = 0;
+let myId = null;
+try { myId = localStorage.getItem("hzId"); } catch (e) {}
+if (!myId) { myId = "p" + Math.random().toString(36).slice(2, 10); try { localStorage.setItem("hzId", myId); } catch (e) {} }
+const T = x => "holidaze/" + room + "/" + x;
 let myTeam = null;
 try { const v = localStorage.getItem("hccTeam-" + room); if (v !== null) myTeam = +v; } catch (e) {}
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-function send(m) { try { if (conn && conn.open) conn.send(m); } catch (e) {} }
 function connText(t) { $("conn").textContent = t; $("joinNote").textContent = t; }
-
+function send(m) {
+  if (!mq || !mq.connected) return;
+  m.id = myId;
+  try { mq.publish(T("in"), JSON.stringify(m), { qos: 0 }); } catch (e) {}
+}
 function connect() {
-  clearTimeout(retryT);
   if (!room) { connText("This link is missing the game code. Scan the QR code on the TV again."); return; }
-  if (!window.Peer) { connText("Couldn't load. Check your internet connection and reload."); return; }
-  try { if (peer) peer.destroy(); } catch (e) {}
+  if (!window.mqtt) { connText("Couldn't load. Check your internet connection and reload."); return; }
   connText("Step 1 of 2: reaching the game server…");
-  peer = new Peer({ config: ICE, debug: 1 });
-  peer.on("open", () => {
-    connText("Step 2 of 2: reaching the game laptop (" + room + ")…");
-    conn = peer.connect("holidaze-" + room, { reliable: true });
-    clearTimeout(connT);
-    connT = setTimeout(() => {
-      if (!conn || !conn.open) { connText("Found the game but couldn't link to the laptop. Try the same Wi-Fi as the laptop, and turn off any VPN. Retrying…"); retry(); }
-    }, 12000);
-    conn.on("open", () => {
-      clearTimeout(connT);
-      connText("Connected to game " + room + " · v2");
-      if (myTeam != null) send({ t: "hello", team: myTeam });
-    });
-    conn.on("data", onData);
-    conn.on("close", retry);
-    conn.on("error", retry);
+  mq = mqtt.connect(BROKER, { clientId: "hz-" + myId + "-" + Math.random().toString(16).slice(2, 6), clean: true, reconnectPeriod: 2000, connectTimeout: 8000 });
+  mq.on("connect", () => {
+    connText("Step 2 of 2: waiting for the game laptop (" + room + ")…");
+    mq.subscribe([T("state"), T("to/" + myId)]);
+    send({ t: "hello", team: myTeam });
   });
-  peer.on("error", e => {
-    connText(e && e.type === "peer-unavailable" ? "Can't find game " + room + ". Is the TV page open? Retrying…" : "Connection problem. Retrying…");
-    retry();
+  mq.on("reconnect", () => connText("Reconnecting…"));
+  mq.on("offline", () => connText("Offline. Retrying…"));
+  mq.on("error", () => connText("Connection problem. Retrying…"));
+  mq.on("message", (t, buf) => {
+    let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; }
+    if (t === T("state")) { lastState = Date.now(); onData(d); }
+    else onData(d);
   });
 }
-function retry() { clearTimeout(retryT); retryT = setTimeout(connect, 2500); }
-
 function onData(d) {
   if (!d || typeof d !== "object") return;
-  if (d.t === "state") { state = d; render(); }
+  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v3"); render(); }
   else if (d.t === "nope") flash("Not your turn!");
 }
+setInterval(() => {
+  if (!mq || !mq.connected) return;
+  send({ t: "ping", team: myTeam });
+  if (state && Date.now() - lastState > 9000) connText("The game laptop isn't responding. Is the game page open on it?");
+}, 4000);
 function flash(t) {
   const el = $("status"); el.textContent = t; el.classList.add("flash");
   clearTimeout(flashT); flashT = setTimeout(() => { el.classList.remove("flash"); render(); }, 1200);
@@ -159,7 +160,7 @@ async function askWake() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     askWake();
-    if (!conn || !conn.open) connect();
+    if (mq && !mq.connected) { try { mq.reconnect(); } catch (e) {} }
   }
 });
 

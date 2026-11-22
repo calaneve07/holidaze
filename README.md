@@ -6,8 +6,9 @@
 Deploy: from this folder run `npx vercel` (or `npx vercel --prod`), or push the folder
 to a GitHub repo and import it in Vercel. No build step and no settings needed.
 
-Phones connect to the laptop through the free PeerJS relay (0.peerjs.com). The laptop
-and phones need internet. Keyboard buttons on the laptop keep working as a backup.
+Phones and the laptop talk through a free public MQTT server (broker.emqx.io) over a secure
+connection. No direct device-to-device link is needed. Both need internet. Keyboard buttons on
+the laptop keep working as a backup.
 
 ## Sections
 - Chess Clock (working): head-to-head and all-teams modes, phone buttons, keyboard backup.

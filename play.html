@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="theme.js"></script>
 <style>
 /* VOICE: one job, one giant button
    IDEA: a game-show buzzer in your hand
@@ -22,8 +23,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Rubik,system-
 h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
 .note{color:var(--dim);font-size:15px;margin:0 0 14px}
 .list{display:grid;gap:10px;overflow:auto}
-.trow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;background:var(--face);border-radius:14px;padding:8px 8px 8px 16px}
-.tname{font-weight:700;font-size:18px;overflow-wrap:anywhere}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;background:var(--face);border-radius:14px;padding:8px 8px 8px 12px;border-left:8px solid var(--tc,transparent)}
+.tname{font-weight:700;font-size:18px;overflow-wrap:anywhere;display:flex;align-items:center;gap:10px}
+.me{display:flex;align-items:center;gap:10px}
+#pad .top{border-bottom:6px solid var(--tc,transparent);padding-bottom:10px}
 .team{min-height:48px;min-width:96px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.1);color:var(--ink);font:700 16px Rubik,sans-serif;padding:0 12px}
 .team:active{background:var(--live)}
 .team:disabled{background:transparent;color:var(--dim);border-style:dashed}
@@ -33,9 +36,10 @@ h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
 .cat{margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--face);font-weight:700;font-size:18px;text-align:center;min-height:48px}
 .stage{flex:1;display:grid;place-items:center;padding:16px 0}
 #btn{width:min(78vw,52vh,380px);aspect-ratio:1;border-radius:50%;border:0;background:#2a6a57;color:var(--ink);font:400 clamp(28px,9vw,44px)/1.05 'Archivo Black',sans-serif;box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25);touch-action:manipulation;transition:background .12s,transform .06s}
-#btn.live{background:var(--live);box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25),0 0 0 8px var(--live2),0 0 40px 10px rgba(255,107,125,.55);animation:glow 1s infinite alternate}
+#btn.live{background:var(--tc,var(--live));color:var(--tink,var(--ink));box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25),0 0 0 8px var(--live2),0 0 40px 10px rgba(255,107,125,.55);animation:glow 1s infinite alternate}
 #btn.down{transform:translateY(6px) scale(.98)}
 #btn.off{background:#20493d;color:var(--dim)}
+#btn:not(.live):not(.off){border:6px solid var(--tc,transparent)}
 @keyframes glow{to{box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25),0 0 0 12px var(--live2),0 0 60px 18px rgba(255,107,125,.7)}}
 @media (prefers-reduced-motion:reduce){#btn.live{animation:none}}
 .status{text-align:center;font-weight:700;font-size:20px;min-height:30px}
@@ -74,6 +78,7 @@ const T = x => "holidaze/" + room + "/" + x;
 let myTeam = null, mySeat = null;
 try { const v = localStorage.getItem("hccSeat-" + room); if (v) { myTeam = +v.slice(0, -1); mySeat = v.slice(-1); } } catch (e) {}
 
+if (window.HZ) { const st = document.createElement("style"); st.textContent = HZ.css; document.head.appendChild(st); }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function connText(t) { $("conn").textContent = t; $("joinNote").textContent = t; }
 function send(m) {
@@ -102,7 +107,7 @@ function connect() {
 }
 function onData(d) {
   if (!d || typeof d !== "object") return;
-  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v4"); render(); }
+  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v5"); render(); }
   else if (d.t === "nope") flash(d.why === "partner" ? "Your partner's turn!" : "Not your turn!");
   else if (d.t === "seatTaken") { clearSeat(); joinMsg = "Someone else has that spot. Pick another."; render(); }
 }
@@ -130,10 +135,11 @@ function render() {
   if (!valid) {
     $("joinNote").textContent = joinMsg || "Tap your team and spot. Partners take A and B.";
     const taken = new Set(state.taken || []);
-    $("teams").innerHTML = state.teams.map((n, i) => `<div class="trow"><div class="tname">${esc(n)}</div>${["A", "B"].map(x => taken.has(i + x) ? `<button class="team" disabled>${x} taken</button>` : `<button class="team" data-i="${i}" data-s="${x}">Player ${x}</button>`).join("")}</div>`).join("");
+    $("teams").innerHTML = state.teams.map((n, i) => `<div class="trow" style="--tc:${window.HZ ? HZ.color(i)[0] : "transparent"}"><div class="tname">${window.HZ ? HZ.badge(i, 32) : ""}<span>${esc(n)}</span></div>${["A", "B"].map(x => taken.has(i + x) ? `<button class="team" disabled>${x} taken</button>` : `<button class="team" data-i="${i}" data-s="${x}">Player ${x}</button>`).join("")}</div>`).join("");
     return;
   }
-  $("me").textContent = state.teams[myTeam] + " · " + mySeat;
+  $("me").innerHTML = (window.HZ ? HZ.badge(myTeam, 36) : "") + `<span>${esc(state.teams[myTeam])} · ${mySeat}</span>`;
+  if (window.HZ) { const [bg, ink] = HZ.color(myTeam); document.body.style.setProperty("--tc", bg); document.body.style.setProperty("--tink", ink); }
   $("cat").textContent = state.cat || "";
   const inMatch = state.inMatch.indexOf(myTeam) >= 0;
   const teamTurn = state.active === myTeam && (state.ph === "run" || state.ph === "pause");

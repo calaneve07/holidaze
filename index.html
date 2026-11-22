@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="theme.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 /* VOICE: loud game-show stage at a holiday party
@@ -79,6 +80,14 @@ textarea{min-height:200px;resize:vertical}
 .lineup{margin:10px 0 0;padding-left:20px}
 .lineup li{margin:6px 0}
 .lineup span{color:var(--dim);font-size:14px}
+.side{border-top:10px solid var(--tc,transparent)}
+.side.on{background:var(--tc,var(--live));color:var(--tink,var(--ink));box-shadow:inset 0 -10px 0 rgba(0,0,0,.25),0 0 0 5px #fff}
+.side.on .ky,.side.on .tag{color:inherit;opacity:.85}
+.side.on.low .tm{color:inherit}
+.nm{display:flex;align-items:center;justify-content:center;gap:10px}
+.clock.many .nm{gap:8px}
+.tcell{display:flex;align-items:center;gap:10px}
+.chip{display:inline-flex;align-items:center;gap:6px}
 .chk{display:flex;align-items:center;gap:10px;min-height:44px;color:var(--ink);font-size:16px;margin:12px 0 0}
 .chk input{width:22px;height:22px;accent-color:var(--gold)}
 .phones{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;background:var(--face);border-radius:16px;padding:16px 18px;margin-top:18px}
@@ -244,16 +253,18 @@ const tn = s => S.teams[M.ids[s]];
 function say(t) { $("msg").textContent = t; }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
+const BADGE = (i, px) => window.HZ ? HZ.badge(i, px) : "";
+if (window.HZ) { const st = document.createElement("style"); st.textContent = HZ.css; document.head.appendChild(st); }
 function build() {
   const cl = $("clock");
   cl.classList.toggle("many", S.mode === "group");
-  cl.innerHTML = M.ids.map((_, s) => `<div class="side" data-s="${s}" role="button" tabindex="0"><div class="nm"></div><div class="tm"></div><div class="cnt"></div><div class="ky"></div><div class="tag"></div></div>`).join("");
+  cl.innerHTML = M.ids.map((ti, s) => `<div class="side" style="--tc:${window.HZ ? HZ.color(ti)[0] : "transparent"};--tink:${window.HZ ? HZ.color(ti)[1] : "inherit"}" data-s="${s}" role="button" tabindex="0"><div class="nm"></div><div class="tm"></div><div class="cnt"></div><div class="ky"></div><div class="tag"></div></div>`).join("");
 }
 function render() {
   const duel = S.mode === "duel";
   $("clock").querySelectorAll(".side").forEach(el => {
     const s = +el.dataset.s;
-    el.querySelector(".nm").textContent = tn(s);
+    el.querySelector(".nm").innerHTML = BADGE(M.ids[s], 34) + `<span>${esc(tn(s))}</span>`;
     el.querySelector(".ky").textContent = "Button: " + keyName(duel ? S.keys[s] : S.tkeys[M.ids[s]]);
     let tag = duel ? (s === 0 ? "At the table" : "Challenger") : (M.alive[s] ? "In" : "Out (" + ordinal(M.ids.length - M.outOrder.indexOf(s)) + ")");
     if (M.ph === "ready" && M.st === s) tag += " · starts";
@@ -274,7 +285,7 @@ function render() {
   $("tk").innerHTML = S.teams.map((n, i) => `<button class="b" data-t="${i}">${assign === "t" + i ? "Press a key…" : esc(n) + ": " + esc(keyName(S.tkeys[i]))}</button>`).join("");
   const rows = S.teams.map((n, i) => ({ n, i, p: S.pts[i], l: S.left[i], a: S.ans[i] }))
     .sort((x, y) => S.rank === "ans" ? (y.a - x.a || y.p - x.p) : (y.p - x.p || y.l - x.l));
-  $("sb").innerHTML = rows.map(r => `<tr class="${duel && r.i === S.order[0] ? "champ" : ""}"><td>${esc(r.n)}</td><td class="n">${r.p}</td><td class="n">${r.a}</td><td class="n">${r.l.toFixed(1)} s</td><td class="n"><button class="adj" data-i="${r.i}" data-d="-1" aria-label="Remove a win from ${esc(r.n)}">−</button><button class="adj" data-i="${r.i}" data-d="1" aria-label="Add a win to ${esc(r.n)}">+</button></td></tr>`).join("");
+  $("sb").innerHTML = rows.map(r => `<tr class="${duel && r.i === S.order[0] ? "champ" : ""}"><td><span class="tcell">${BADGE(r.i, 28)}${esc(r.n)}</span></td><td class="n">${r.p}</td><td class="n">${r.a}</td><td class="n">${r.l.toFixed(1)} s</td><td class="n"><button class="adj" data-i="${r.i}" data-d="-1" aria-label="Remove a win from ${esc(r.n)}">−</button><button class="adj" data-i="${r.i}" data-d="1" aria-label="Add a win to ${esc(r.n)}">+</button></td></tr>`).join("");
   const q = S.order.slice(2).map(i => S.teams[i]);
   $("deck").textContent = duel && q.length ? "On deck: " + q.join(", ") : (duel ? "" : "Each team's own button passes the turn. Pressing out of turn does nothing.");
   draw();
@@ -501,7 +512,7 @@ function livePhones() { const now = Date.now(); return Object.values(phones).fil
 function renderPhones() {
   let lobby = 0; const seats = S.teams.map(() => ({}));
   livePhones().forEach(p => { if (p.team != null && p.team < seats.length && p.seat) seats[p.team][p.seat] = 1; else lobby++; });
-  $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${esc(n)}: <b>${seats[i].A ? "A ✓" : "A –"}</b> <b>${seats[i].B ? "B ✓" : "B –"}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
+  $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${BADGE(i, 22)}${esc(n)}: <b>${seats[i].A ? "A ✓" : "A –"}</b> <b>${seats[i].B ? "B ✓" : "B –"}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
 }
 function showJoin() {
   const base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "");
@@ -525,7 +536,7 @@ function onIn(d) {
     if (!(ti >= 0 && ti < S.teams.length) || holder) { p.team = null; p.seat = null; sendTo(d.id, { t: "seatTaken" }); }
     else { p.team = ti; p.seat = seat; }
   }
-  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v4"); }
+  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v5"); }
   if (d.t === "press") { aud(); remotePress(p.team, d.id, p.seat); }
 }
 function startNet() {
@@ -535,7 +546,7 @@ function startNet() {
   showJoin();
   netSay("Reaching the game server…");
   mq = mqtt.connect(BROKER, { clientId: "hz-host-" + roomCode + "-" + Math.random().toString(16).slice(2, 8), clean: true, reconnectPeriod: 2000, connectTimeout: 8000 });
-  mq.on("connect", () => { mq.subscribe(T("in")); netSay("Ready for phones · v4. Keyboard buttons still work too."); broadcast(); });
+  mq.on("connect", () => { mq.subscribe(T("in")); netSay("Ready for phones · v5. Keyboard buttons still work too."); broadcast(); });
   mq.on("reconnect", () => netSay("Reconnecting to the game server…"));
   mq.on("offline", () => netSay("Game server offline. Retrying… Keyboard buttons still work."));
   mq.on("error", e => netSay("Game server problem (" + (e && e.message) + "). Retrying…"));

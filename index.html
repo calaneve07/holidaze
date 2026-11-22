@@ -468,6 +468,7 @@ $("resetAll").addEventListener("click", () => {
 });
 
 let peer = null, conns = [], roomCode = null, idTries = 0;
+const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" }] };
 function genCode() { const a = "ABCDEFGHJKMNPQRSTUVWXYZ"; let x = ""; for (let i = 0; i < 5; i++) x += a[Math.floor(Math.random() * a.length)]; return x; }
 function netSay(t) { $("netStatus").textContent = t; }
 function stateMsg() {
@@ -502,10 +503,14 @@ function onData(c, d) {
 }
 function openPeer() {
   try { if (peer) peer.destroy(); } catch (e) {}
-  peer = new Peer("holidaze-" + roomCode);
+  netSay("Reaching the game server…");
+  peer = new Peer("holidaze-" + roomCode, { config: ICE, debug: 1 });
   peer.on("open", () => { idTries = 0; try { localStorage.setItem("hccRoom", roomCode); } catch (e) {} showJoin(); });
   peer.on("connection", c => {
-    c.on("open", () => { conns.push({ c, team: null }); try { c.send(stateMsg()); } catch (e) {} renderPhones(); });
+    netSay("A phone is connecting…");
+    const slow = setTimeout(() => { if (!c.open) netSay("A phone reached the game but couldn't finish linking. Usually a network block: guest Wi-Fi, a VPN, or cellular data. Put the phone on the same Wi-Fi as this laptop."); }, 15000);
+    c.on("open", () => {
+      clearTimeout(slow); netSay("Phone connected. Ready for more phones · v2"); conns.push({ c, team: null }); try { c.send(stateMsg()); } catch (e) {} renderPhones(); });
     c.on("data", d => onData(c, d));
     c.on("close", () => { conns = conns.filter(x => x.c !== c); renderPhones(); });
     c.on("error", () => {});

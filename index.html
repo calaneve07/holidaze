@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="theme.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -98,6 +99,31 @@ textarea{min-height:200px;resize:vertical}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .chip{padding:4px 12px;border-radius:99px;background:rgba(0,0,0,.28);font-size:14px}
 .chip b{color:var(--gold)}
+.hlhead{align-items:center}
+.hlhead b{font:700 clamp(18px,2.2vw,26px)/1.3 Rubik,sans-serif}
+.hlt{font:400 clamp(44px,7vw,84px)/1 'Archivo Black',sans-serif;font-variant-numeric:tabular-nums}
+.hlt.low{color:var(--gold)}
+.inl{display:flex;align-items:center;gap:8px;margin:0;color:var(--ink);font-size:16px}.inl input{width:84px;min-height:44px}
+.b:disabled{opacity:.4;cursor:default}
+.hjoin{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:4px 0 14px}
+.hlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px}
+.hcard{background:var(--face);border-radius:18px;padding:12px;border-top:10px solid var(--tc,transparent)}
+.hcard.done{box-shadow:0 0 0 4px var(--gold)}
+.hhead{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px}
+.hhead .nmx{overflow-wrap:anywhere}
+.hplace{margin-left:auto;font:400 22px/1 'Archivo Black',sans-serif;color:var(--gold);white-space:nowrap}
+.hslots{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:10px}
+.slot{position:relative;aspect-ratio:3/4;border-radius:12px;background:rgba(0,0,0,.25);overflow:hidden;display:grid;place-items:center;color:var(--dim);text-align:center;padding:6px}
+.slot.has{padding:0}
+.slot img{width:100%;height:100%;object-fit:cover;cursor:zoom-in;display:block}
+.slot .x{position:absolute;top:6px;right:6px;width:44px;height:44px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:20px;cursor:pointer}
+.slot .x:focus-visible{outline:3px solid var(--gold)}
+.slot .sl{position:absolute;left:6px;bottom:6px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.65);font-size:14px;color:#fff}
+.hlplaces{padding-left:24px}.hlplaces li{font-size:18px;margin:6px 0}.hlplaces span{color:var(--dim)}
+.pop{max-width:min(94vw,1000px);text-align:center;cursor:pointer}
+.pop img{max-width:100%;max-height:74vh;border-radius:18px;box-shadow:0 0 0 8px var(--tc,#fff);display:block;margin:0 auto}
+.pop .cap{font:400 clamp(24px,4vw,42px)/1.1 'Archivo Black',sans-serif;margin-top:16px;display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap}
+.pop .sub{color:var(--gold);font-weight:700;font-size:clamp(18px,2.4vw,26px);margin-top:6px}
 @media(max-width:600px){.phones{grid-template-columns:minmax(0,1fr)}.clock:not(.many){grid-template-columns:minmax(0,1fr)}.tm{font-size:clamp(64px,22vw,120px);margin:6px 0}.side{padding:12px 12px 16px}}
 </style>
 </head>
@@ -107,11 +133,29 @@ textarea{min-height:200px;resize:vertical}
     <h1>Holidaze Craze</h1>
     <nav class="nav" aria-label="Sections">
       <a href="#clock" data-v="clock">Chess Clock</a>
+      <a href="#hotline" data-v="hotline">Hotline</a>
       <a href="#scoreboard" data-v="scoreboard">Scoreboard</a>
       <a href="#challenges" data-v="challenges">Challenges</a>
     </nav>
     <button class="b" id="fs">Full screen</button>
   </header>
+
+  <section class="view" id="v-hotline" hidden>
+    <div class="cat hlhead"><small>Holiday Hotline</small><b id="hlTask">Each partner gets a different person outside the party to send a photo of themselves with something on their head, holding a sign with your team name and "Holidaze Craze 2026."</b><div class="hlt" id="hlTime">10:00</div></div>
+    <div class="bar">
+      <button class="b pri" id="hlGo">Start round</button>
+      <button class="b" id="hlEnd">End round now</button>
+      <button class="b" id="hlDl">Download photos</button>
+      <button class="b" id="hlReset">Reset round</button>
+      <label class="inl" for="hlMin">Minutes <input id="hlMin" type="number" min="1" max="30" inputmode="numeric"></label>
+    </div>
+    <div class="hjoin"><span>Join: <b id="hlJoin">…</b></span><span class="chips" id="hlPhones" style="margin:0"></span></div>
+    <div class="msg" id="hlMsg" aria-live="polite"></div>
+    <div class="hlgrid" id="hlGrid"></div>
+    <h2>Finish order</h2>
+    <ol class="hlplaces" id="hlPlaces"></ol>
+    <p class="note">A team finishes when both partners' photos are in. Photos count the moment they arrive. Tap ✕ to reject a photo, and that player can send another while the clock runs. Teams that don't finish rank by photos sent, then by when their first photo came in. Photos stay saved in this browser until you reset the round.</p>
+  </section>
 
   <section class="view" id="v-scoreboard" hidden>
     <div class="soon">
@@ -191,6 +235,10 @@ textarea{min-height:200px;resize:vertical}
   <div class="card"><h3 id="ovT"></h3><p id="ovP"></p>
     <div class="bar"><button class="b pri" id="ovGo">Next match<kbd>Enter</kbd></button><button class="b" id="ovUndo">Undo</button></div>
   </div>
+</div>
+
+<div class="over" id="hlPop" role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="pop" id="hlPopBox"><img id="hlPopImg" alt=""><div class="cap" id="hlPopCap"></div><div class="sub" id="hlPopSub"></div></div>
 </div>
 
 <script>
@@ -399,14 +447,239 @@ function undo() {
   save(); say("Last result undone"); newMatch();
 }
 
+// ---------- Holiday Hotline: photo round ----------
+const HKEY = "hzHotline";
+let H = null;
+try { H = JSON.parse(localStorage.getItem(HKEY)); } catch (e) {}
+if (!H || typeof H !== "object") H = {};
+H.ph = ["ready", "run", "over"].includes(H.ph) ? H.ph : "ready";
+H.min = Math.min(30, Math.max(1, +H.min || 10));
+H.start = +H.start || 0;
+H.photos = H.photos && typeof H.photos === "object" ? H.photos : {};
+function hSave() { try { localStorage.setItem(HKEY, JSON.stringify(H)); } catch (e) {} }
+function hLeft() {
+  if (H.ph === "ready") return H.min * 60000;
+  if (H.ph === "over") return 0;
+  return Math.max(0, H.start + H.min * 60000 - Date.now());
+}
+const mmss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const atT = ms => { const s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const urls = {}, parts = {};
+
+// Photos are saved in this browser (IndexedDB) so a page reload keeps them.
+let dbP = null;
+function db() {
+  if (!dbP) dbP = new Promise((res, rej) => {
+    try {
+      const r = indexedDB.open("holidaze", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("photos", { keyPath: "pid" });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    } catch (e) { rej(e); }
+  });
+  return dbP;
+}
+async function idb(mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction("photos", mode), req = fn(tx.objectStore("photos"));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+function toBlob(dataURL) {
+  const b = atob(dataURL.split(",")[1]), u = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return new Blob([u], { type: "image/jpeg" });
+}
+
+function hStand() {
+  const rows = S.teams.map((n, i) => {
+    const ts = ["A", "B"].map(x => H.photos[i + x]).filter(Boolean).map(p => p.t);
+    return { i, n, c: ts.length, fin: ts.length === 2 ? Math.max(...ts) : null, first: ts.length ? Math.min(...ts) : Infinity };
+  });
+  rows.sort((x, y) => y.c - x.c || (x.c === 2 ? x.fin - y.fin : x.first - y.first) || x.i - y.i);
+  const firstZero = rows.findIndex(r => r.c === 0);
+  rows.forEach((r, k) => { r.place = r.c === 0 ? firstZero + 1 : k + 1; r.tied = r.c === 0 && rows.length - firstZero > 1; });
+  return rows;
+}
+function placeOf(ti) { const r = hStand().find(x => x.i === ti); return r ? r : null; }
+function saveResult() {
+  try {
+    const all = JSON.parse(localStorage.getItem("hzResults") || "{}");
+    all.hotline = { at: Date.now(), places: hStand().map(r => ({ team: r.i, name: r.n, place: r.place, photos: r.c, finish: r.fin })) };
+    localStorage.setItem("hzResults", JSON.stringify(all));
+  } catch (e) {}
+}
+
+function hMsg(t) { $("hlMsg").textContent = t; }
+function hRender() {
+  const rows = hStand(), byTeam = {};
+  rows.forEach(r => { byTeam[r.i] = r; });
+  $("hlGrid").innerHTML = S.teams.map((n, i) => {
+    const r = byTeam[i], col = window.HZ ? HZ.color(i)[0] : "transparent";
+    const place = r.c === 2 ? ordinal(r.place) : r.c === 1 ? "1 of 2" : "";
+    const slots = ["A", "B"].map(x => {
+      const p = H.photos[i + x];
+      if (p) return `<div class="slot has"><img src="${urls[p.pid] || ""}" alt="${esc(n)}, player ${x}'s photo" data-k="${i}${x}"><button class="x" data-k="${i}${x}" aria-label="Reject ${esc(n)} player ${x}'s photo">✕</button><span class="sl">${x} · ${atT(p.t)}</span></div>`;
+      return `<div class="slot"><span>Player ${x}<br>${H.ph === "over" ? "no photo" : "waiting…"}</span></div>`;
+    }).join("");
+    return `<div class="hcard${r.c === 2 ? " done" : ""}" style="--tc:${col}"><div class="hhead">${BADGE(i, 32)}<span class="nmx">${esc(n)}</span><span class="hplace">${place}</span></div><div class="hslots">${slots}</div></div>`;
+  }).join("");
+  $("hlPlaces").innerHTML = rows.map(r => {
+    const how = r.c === 2 ? `finished at ${atT(r.fin)}` : r.c === 1 ? `1 photo, first at ${atT(r.first)}` : "no photos yet";
+    return `<li value="${r.place}">${esc(r.n)} <span>· ${how}${r.tied ? " (tied)" : ""}</span></li>`;
+  }).join("");
+  $("hlGo").disabled = H.ph !== "ready";
+  $("hlGo").textContent = H.ph === "run" ? "Round running" : H.ph === "over" ? "Round over" : "Start round";
+  $("hlEnd").disabled = H.ph !== "run";
+  $("hlMin").value = H.min; $("hlMin").disabled = H.ph !== "ready";
+  hTime();
+}
+function hTime() {
+  const left = hLeft();
+  $("hlTime").textContent = mmss(left);
+  $("hlTime").classList.toggle("low", H.ph === "run" && left < 60000);
+}
+
+// Pop-up: show each new photo big on the TV for a few seconds.
+let popQ = [], popT = null;
+function hPop(item) { if (view !== "hotline") return; popQ.push(item); if (!popT) nextPop(); }
+function showPop(it) {
+  $("hlPopImg").src = it.src; $("hlPopImg").alt = it.alt;
+  $("hlPopCap").innerHTML = it.cap; $("hlPopSub").textContent = it.sub || "";
+  $("hlPopBox").style.setProperty("--tc", it.col);
+  $("hlPop").classList.add("show");
+}
+function nextPop() {
+  clearTimeout(popT);
+  const it = popQ.shift();
+  if (!it) { popT = null; $("hlPop").classList.remove("show"); return; }
+  showPop(it); popT = setTimeout(nextPop, it.ms || 4500);
+}
+function hClosePop() { popQ = []; clearTimeout(popT); popT = null; const el = document.getElementById("hlPop"); if (el) el.classList.remove("show"); }
+$("hlPop").addEventListener("click", nextPop);
+addEventListener("keydown", e => { if (e.key === "Escape" && $("hlPop").classList.contains("show")) nextPop(); });
+
+function hEnd() {
+  if (H.ph !== "run") return;
+  H.ph = "over"; hSave(); saveResult(); buzz();
+  hMsg("Time! Round over."); hRender(); broadcast();
+}
+function hAccept(team, seat, pid, dataURL, phoneId) {
+  const key = team + seat, have = H.photos[key];
+  if (have) { sendTo(phoneId, have.pid === pid ? { t: "phOk", pid } : { t: "phNo", pid, why: "have" }); return; }
+  if (H.ph !== "run") { sendTo(phoneId, { t: "phNo", pid, why: "closed" }); return; }
+  if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataURL)) { sendTo(phoneId, { t: "phNo", pid, why: "bad" }); return; }
+  const t = Date.now() - H.start, blob = toBlob(dataURL);
+  H.photos[key] = { pid, t }; hSave();
+  urls[pid] = URL.createObjectURL(blob);
+  idb("readwrite", st => st.put({ pid, team, seat, name: S.teams[team], t, blob })).catch(() => hMsg("Couldn't save that photo in this browser. It still counts. Download photos before you reload."));
+  sendTo(phoneId, { t: "phOk", pid });
+  const r = placeOf(team), done = r && r.c === 2;
+  if (done) { tone(660, 0.12, "triangle", 0.3); setTimeout(() => tone(990, 0.25, "triangle", 0.3), 130); } else clickSnd();
+  hPop({ src: urls[pid], alt: `${S.teams[team]}, player ${seat}'s photo`, col: window.HZ ? HZ.color(team)[0] : "#fff",
+    cap: `${BADGE(team, 44)}<span>${esc(S.teams[team])} · Player ${seat}</span>`,
+    sub: done ? `Both photos in! ${ordinal(r.place)} place at ${atT(r.fin)}` : `Photo 1 of 2 at ${atT(t)}` });
+  hMsg(done ? `${S.teams[team]} finished ${ordinal(r.place)}!` : `${S.teams[team]} has 1 of 2 photos.`);
+  if (H.ph === "over") saveResult();
+  hRender(); broadcast();
+}
+function hChunk(p, d) {
+  const pid = typeof d.pid === "string" ? d.pid.slice(0, 40) : "", n = +d.n, i = +d.i;
+  if (!pid || !(n >= 1 && n <= 30) || !(i >= 0 && i < n) || typeof d.d !== "string" || d.d.length > 70000) return;
+  const team = p.team, seat = d.seat === "B" ? "B" : "A";
+  if (team == null) { sendTo(d.id, { t: "phNo", pid, why: "team" }); return; }
+  if (seat !== p.seat && livePhones().some(q => q !== p && q.team === team && q.seat === seat)) { sendTo(d.id, { t: "phNo", pid, why: "partner" }); return; }
+  const a = parts[pid] || (parts[pid] = { n, c: new Array(n), got: 0, team, seat, at: Date.now() });
+  if (a.n !== n) return;
+  if (a.c[i] == null) { a.c[i] = d.d; a.got++; }
+  if (a.got === a.n) { delete parts[pid]; hAccept(a.team, a.seat, pid, a.c.join(""), d.id); }
+}
+setInterval(() => { const now = Date.now(); Object.keys(parts).forEach(k => { if (now - parts[k].at > 120000) delete parts[k]; }); }, 30000);
+
+setInterval(() => {
+  if (H.ph === "run" && hLeft() <= 0) hEnd();
+  if (view === "hotline") hTime();
+}, 250);
+
+$("hlGo").addEventListener("click", () => {
+  if (H.ph !== "ready") return;
+  aud(); H.ph = "run"; H.start = Date.now(); hSave();
+  tone(523, 0.15, "triangle", 0.3); setTimeout(() => tone(784, 0.3, "triangle", 0.3), 160);
+  hMsg("Go! Get those photos."); hRender(); broadcast();
+});
+$("hlEnd").addEventListener("click", hEnd);
+$("hlMin").addEventListener("change", () => {
+  if (H.ph !== "ready") return;
+  H.min = Math.min(30, Math.max(1, Math.round(+$("hlMin").value) || 10)); hSave(); hRender(); broadcast();
+});
+$("hlGrid").addEventListener("click", e => {
+  const x = e.target.closest(".x"), img = e.target.closest("img");
+  if (x) {
+    const key = x.dataset.k, p = H.photos[key]; if (!p) return;
+    const ti = +key.slice(0, -1), seat = key.slice(-1);
+    delete H.photos[key]; hSave();
+    idb("readwrite", st => st.delete(p.pid)).catch(() => {});
+    if (urls[p.pid]) { URL.revokeObjectURL(urls[p.pid]); delete urls[p.pid]; }
+    if (H.ph === "over") saveResult();
+    hMsg(`Rejected ${S.teams[ti]} player ${seat}'s photo.` + (H.ph === "run" ? " They can send another." : ""));
+    hRender(); broadcast(); return;
+  }
+  if (img && img.src) {
+    const key = img.dataset.k, ti = +key.slice(0, -1);
+    hClosePop();
+    showPop({ src: img.src, alt: img.alt, col: window.HZ ? HZ.color(ti)[0] : "#fff", cap: `${BADGE(ti, 44)}<span>${esc(S.teams[ti])} · Player ${key.slice(-1)}</span>`, sub: "Tap to close" });
+  }
+});
+let hResetArm = 0;
+$("hlReset").addEventListener("click", async () => {
+  const now = Date.now();
+  if (now - hResetArm > 3000) {
+    hResetArm = now; $("hlReset").textContent = "Tap again: deletes photos";
+    setTimeout(() => { $("hlReset").textContent = "Reset round"; }, 3000); return;
+  }
+  hResetArm = 0; $("hlReset").textContent = "Reset round";
+  Object.values(urls).forEach(u => URL.revokeObjectURL(u));
+  Object.keys(urls).forEach(k => delete urls[k]);
+  H.photos = {}; H.ph = "ready"; H.start = 0; hSave();
+  try { await idb("readwrite", st => st.clear()); } catch (e) {}
+  hClosePop(); hMsg("Round reset."); hRender(); broadcast();
+});
+$("hlDl").addEventListener("click", async () => {
+  const rows = hStand(), files = [];
+  const safe = s => String(s).replace(/[^A-Za-z0-9 _-]/g, "").trim().replace(/\s+/g, "-") || "team";
+  for (const r of rows) for (const x of ["A", "B"]) {
+    const p = H.photos[r.i + x]; if (!p || !urls[p.pid]) continue;
+    try { files.push({ name: `${String(r.place).padStart(2, "0")}-${safe(r.n)}-${x}.jpg`, blob: await (await fetch(urls[p.pid])).blob() }); } catch (e) {}
+  }
+  if (!files.length) { hMsg("No photos to download yet."); return; }
+  const dl = (blob, name) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); };
+  if (window.JSZip) {
+    const z = new JSZip(); files.forEach(f => z.file(f.name, f.blob));
+    dl(await z.generateAsync({ type: "blob" }), "holidaze-hotline-photos.zip");
+  } else files.forEach((f, k) => setTimeout(() => dl(f.blob, f.name), k * 400));
+  hMsg(`Downloading ${files.length} photo${files.length === 1 ? "" : "s"}.`);
+});
+
+// Load saved photos from this browser.
+idb("readonly", st => st.getAll()).then(recs => {
+  const want = new Set(Object.values(H.photos).map(p => p.pid));
+  (recs || []).forEach(r => { if (want.has(r.pid) && r.blob) urls[r.pid] = URL.createObjectURL(r.blob); });
+  hRender();
+}).catch(() => hRender());
+hRender();
+
 const LINEUP = [["Reindeer Catapult", "build and launch"], ["Candy Cane Bridge", "build and load test"], ["Holiday Hotline", "phone a friend"], ["Holiday Chess Clock", "phone buzzers, built"], ["Face Hole", "cornhole"], ["Santa's Beard", "messy"], ["Saran wrap ball", "finale"]];
 $("lineup").innerHTML = LINEUP.map(([n, d]) => `<li>${esc(n)} <span>${esc(d)}</span></li>`).join("");
 let view = "clock";
 function route() {
   const h = (location.hash || "#clock").slice(1);
-  view = ["clock", "scoreboard", "challenges"].includes(h) ? h : "clock";
+  view = ["clock", "hotline", "scoreboard", "challenges"].includes(h) ? h : "clock";
   document.querySelectorAll(".view").forEach(v => { v.hidden = v.id !== "v-" + view; });
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("cur", a.dataset.v === view));
+  if (view !== "hotline") hClosePop();
+  try { broadcast(); } catch (e) {}
 }
 addEventListener("hashchange", route);
 route();
@@ -498,7 +771,9 @@ function stateMsg() {
   const alive = S.teams.map(() => false), time = S.teams.map(() => null);
   M.ids.forEach((ti, s) => { alive[ti] = M.alive[s]; time[ti] = Math.max(0, Math.round(M.t[s] / 100) / 10); });
   const taken = livePhones().filter(p => p.team != null && p.seat).map(p => p.team + p.seat);
-  return { t: "state", alt: S.alt, taken, next: S.teams.map((_, i) => nextSeat(i)), both: S.teams.map((_, i) => bothLive(i)), teams: S.teams, mode: S.mode, ph: M.ph, cat: cat(), active: M.a == null ? null : M.ids[M.a], inMatch: M.ids, alive, time };
+  return { t: "state", alt: S.alt, taken, next: S.teams.map((_, i) => nextSeat(i)), both: S.teams.map((_, i) => bothLive(i)), teams: S.teams, mode: S.mode, ph: M.ph, cat: cat(), active: M.a == null ? null : M.ids[M.a], inMatch: M.ids, alive, time,
+    game: view === "hotline" ? "hotline" : "clock",
+    hl: { ph: H.ph, left: Math.ceil(hLeft() / 1000), have: S.teams.map((_, i) => [!!H.photos[i + "A"], !!H.photos[i + "B"]]) } };
 }
 function broadcast() {
   if (!mq || !mq.connected || !M) return;
@@ -513,12 +788,14 @@ function renderPhones() {
   let lobby = 0; const seats = S.teams.map(() => ({}));
   livePhones().forEach(p => { if (p.team != null && p.team < seats.length && p.seat) seats[p.team][p.seat] = 1; else lobby++; });
   $("phoneList").innerHTML = S.teams.map((n, i) => `<span class="chip">${BADGE(i, 22)}${esc(n)}: <b>${seats[i].A ? "A ✓" : "A –"}</b> <b>${seats[i].B ? "B ✓" : "B –"}</b></span>`).join("") + (lobby ? `<span class="chip">Choosing a team: <b>${lobby}</b></span>` : "");
+  $("hlPhones").innerHTML = $("phoneList").innerHTML;
 }
 function showJoin() {
   const base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "");
   const url = base + "play.html?room=" + roomCode;
   $("joinUrl").textContent = url.replace(/^https?:\/\//, "");
   $("roomCode").textContent = roomCode;
+  $("hlJoin").textContent = url.replace(/^https?:\/\//, "");
   $("qr").innerHTML = "";
   try { new QRCode($("qr"), { text: url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $("qr").style.display = "none"; }
   renderPhones();
@@ -536,8 +813,9 @@ function onIn(d) {
     if (!(ti >= 0 && ti < S.teams.length) || holder) { p.team = null; p.seat = null; sendTo(d.id, { t: "seatTaken" }); }
     else { p.team = ti; p.seat = seat; }
   }
-  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v5"); }
+  if (d.t === "hello" || fresh) { renderPhones(); broadcast(); netSay("Phone connected. Ready for more phones · v6"); }
   if (d.t === "press") { aud(); remotePress(p.team, d.id, p.seat); }
+  if (d.t === "ph") hChunk(p, d);
 }
 function startNet() {
   if (!window.mqtt) { netSay("Phone buttons couldn't load. Check the internet connection, or use keyboard buttons."); return; }
@@ -546,7 +824,7 @@ function startNet() {
   showJoin();
   netSay("Reaching the game server…");
   mq = mqtt.connect(BROKER, { clientId: "hz-host-" + roomCode + "-" + Math.random().toString(16).slice(2, 8), clean: true, reconnectPeriod: 2000, connectTimeout: 8000 });
-  mq.on("connect", () => { mq.subscribe(T("in")); netSay("Ready for phones · v5. Keyboard buttons still work too."); broadcast(); });
+  mq.on("connect", () => { mq.subscribe(T("in"), { qos: 1 }); netSay("Ready for phones · v6. Keyboard buttons still work too."); broadcast(); });
   mq.on("reconnect", () => netSay("Reconnecting to the game server…"));
   mq.on("offline", () => netSay("Game server offline. Retrying… Keyboard buttons still work."));
   mq.on("error", e => netSay("Game server problem (" + (e && e.message) + "). Retrying…"));
@@ -555,6 +833,7 @@ function startNet() {
 setInterval(renderPhones, 5000);
 setInterval(broadcast, 3000);
 setInterval(() => { if (M && M.ph === "run") broadcast(); }, 400);
+setInterval(() => { if (H.ph === "run" && view === "hotline") broadcast(); }, 1000);
 
 newMatch();
 startNet();

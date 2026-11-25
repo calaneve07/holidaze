@@ -46,6 +46,20 @@ h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
 .time{text-align:center;color:var(--dim);font-size:16px;min-height:24px;font-variant-numeric:tabular-nums}
 .flash{color:var(--gold)}
 .conn{text-align:center;color:var(--dim);font-size:13px;margin-top:6px}
+.htime{text-align:center;font:400 clamp(40px,14vw,64px)/1 'Archivo Black',sans-serif;font-variant-numeric:tabular-nums;margin-top:12px}
+.htime.low{color:var(--gold)}
+.hslots{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:12px}
+.hs{background:var(--face);border-radius:12px;padding:8px;text-align:center;font-size:15px;color:var(--dim);min-height:64px;display:grid;place-items:center;gap:4px}
+.hs.ok{color:var(--ink);box-shadow:0 0 0 3px var(--tc,var(--gold))}
+.hs img{width:100%;max-height:18vh;object-fit:cover;border-radius:8px}
+.hs b{color:var(--ink)}
+.hstage{flex:1;display:grid;place-items:center;padding:10px 0;min-height:0}
+#hStatus{font-size:17px;min-height:50px}
+.big{width:min(74vw,38vh,340px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;padding:24px;background:var(--tc,var(--live));color:var(--tink,var(--ink));font:400 clamp(24px,8vw,38px)/1.1 'Archivo Black',sans-serif;box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25),0 0 0 8px rgba(255,255,255,.85);cursor:pointer}
+.big.off{background:#20493d;color:var(--dim);box-shadow:inset 0 -14px 0 rgba(0,0,0,.28),0 10px 0 rgba(0,0,0,.25);pointer-events:none}
+.big:focus-within{outline:4px solid var(--gold);outline-offset:4px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.retry{min-height:48px;border-radius:12px;border:0;background:var(--gold);color:#1d1500;font:700 17px Rubik,sans-serif;padding:0 18px;margin:8px auto 0;display:block}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -65,6 +79,17 @@ h1{font:400 26px/1.05 'Archivo Black',sans-serif;margin:8px 0 6px}
   <div class="conn" id="conn"></div>
 </div>
 
+<div class="view" id="hot" hidden>
+  <div class="top"><div class="me" id="me2"></div><button class="chg" id="chg2">Change team</button></div>
+  <div class="cat">Holiday Hotline: send your photo</div>
+  <div class="htime" id="hTime"></div>
+  <div class="hslots" id="hSlots"></div>
+  <div class="hstage"><label class="big off" id="hBtn"><span id="hLbl">WAIT</span><input class="vh" type="file" id="hFile" accept="image/*"></label></div>
+  <div class="status" id="hStatus" aria-live="polite"></div>
+  <button class="retry" id="hRetry" hidden>Send again</button>
+  <div class="conn" id="conn2"></div>
+</div>
+
 <script>
 {
 const $ = id => document.getElementById(id);
@@ -80,7 +105,7 @@ try { const v = localStorage.getItem("hccSeat-" + room); if (v) { myTeam = +v.sl
 
 if (window.HZ) { const st = document.createElement("style"); st.textContent = HZ.css; document.head.appendChild(st); }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-function connText(t) { $("conn").textContent = t; $("joinNote").textContent = t; }
+function connText(t) { $("conn").textContent = t; $("conn2").textContent = t; $("joinNote").textContent = t; }
 function send(m) {
   if (!mq || !mq.connected) return;
   m.id = myId;
@@ -95,6 +120,7 @@ function connect() {
     connText("Step 2 of 2: waiting for the game laptop (" + room + ")…");
     mq.subscribe([T("state"), T("to/" + myId)]);
     send({ t: "hello", team: myTeam, seat: mySeat });
+    if (pend && pend.waiting) pushPhoto();
   });
   mq.on("reconnect", () => connText("Reconnecting…"));
   mq.on("offline", () => connText("Offline. Retrying…"));
@@ -107,8 +133,14 @@ function connect() {
 }
 function onData(d) {
   if (!d || typeof d !== "object") return;
-  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v5"); render(); }
+  if (d.t === "state") { state = d; connText("Connected to game " + room + " · v6"); render(); }
   else if (d.t === "nope") flash(d.why === "partner" ? "Your partner's turn!" : "Not your turn!");
+  else if (d.t === "phOk" && pend && d.pid === pend.pid) { clearTimeout(pend.timer); lastSent[pend.seat] = pend.data; pend = null; hFlash("Photo counted!"); render(); }
+  else if (d.t === "phNo" && pend && d.pid === pend.pid) {
+    clearTimeout(pend.timer); pend = null;
+    hFlash({ closed: "The round isn't running.", have: "Your team already has that photo.", partner: "Your partner sends that one.", team: "Pick your team first.", bad: "That photo didn't work. Try another." }[d.why] || "Not accepted.");
+    render();
+  }
   else if (d.t === "seatTaken") { clearSeat(); joinMsg = "Someone else has that spot. Pick another."; render(); }
 }
 setInterval(() => {
@@ -131,7 +163,9 @@ function pickSeat(i, seat) {
 function render() {
   if (!state) return;
   const valid = myTeam != null && !!mySeat && myTeam >= 0 && myTeam < state.teams.length;
-  $("join").hidden = valid; $("pad").hidden = !valid;
+  const hot = valid && state.game === "hotline";
+  $("join").hidden = valid; $("pad").hidden = !valid || hot; $("hot").hidden = !hot;
+  if (hot) { renderHot(); return; }
   if (!valid) {
     $("joinNote").textContent = joinMsg || "Tap your team and spot. Partners take A and B.";
     const taken = new Set(state.taken || []);
@@ -159,7 +193,7 @@ function render() {
 }
 
 $("teams").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) pickSeat(+b.dataset.i, b.dataset.s); });
-$("chg").addEventListener("click", () => { clearSeat(); send({ t: "hello", team: null }); render(); });
+["chg", "chg2"].forEach(id => $(id).addEventListener("click", () => { clearSeat(); send({ t: "hello", team: null }); render(); }));
 $("btn").addEventListener("pointerdown", e => {
   e.preventDefault();
   askWake();
@@ -178,6 +212,92 @@ document.addEventListener("visibilitychange", () => {
     if (mq && !mq.connected) { try { mq.reconnect(); } catch (e) {} }
   }
 });
+
+// ---------- Holiday Hotline: send a photo ----------
+let pend = null, lastSent = {}, prevHave = null, hFlashT = null, hFlashMsg = "";
+const mmss = s => { s = Math.max(0, Math.ceil(+s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+function hFlash(t) { hFlashMsg = t; clearTimeout(hFlashT); hFlashT = setTimeout(() => { hFlashMsg = ""; render(); }, 3000); render(); }
+function hlOf() { return (state && state.hl) || { ph: "ready", left: 0, have: [] }; }
+function haveOf() { const h = hlOf().have[myTeam]; return h ? [!!h[0], !!h[1]] : [false, false]; }
+// Which slot this phone should fill next: its own, or the partner's if the partner has no phone connected.
+function sendSeat() {
+  const have = haveOf(), mine = mySeat === "B" ? 1 : 0, other = mySeat === "B" ? "A" : "B";
+  if (!have[mine]) return mySeat;
+  if (!have[1 - mine] && !(state.both && state.both[myTeam])) return other;
+  return null;
+}
+function renderHot() {
+  $("me2").innerHTML = (window.HZ ? HZ.badge(myTeam, 36) : "") + `<span>${esc(state.teams[myTeam])} · ${mySeat}</span>`;
+  if (window.HZ) { const [bg, ink] = HZ.color(myTeam); document.body.style.setProperty("--tc", bg); document.body.style.setProperty("--tink", ink); }
+  const hl = hlOf(), have = haveOf();
+  if (hl.ph === "ready") lastSent = {};
+  if (prevHave && hl.ph !== "ready") ["A", "B"].forEach((x, k) => {
+    if (prevHave[k] && !have[k]) { delete lastSent[x]; hFlashMsg = x === mySeat ? "Your photo was rejected. Send a new one." : "Your partner's photo was rejected."; clearTimeout(hFlashT); hFlashT = setTimeout(() => { hFlashMsg = ""; render(); }, 4000); }
+  });
+  prevHave = have.slice();
+  $("hTime").textContent = mmss(hl.left);
+  $("hTime").classList.toggle("low", hl.ph === "run" && hl.left < 60);
+  $("hSlots").innerHTML = ["A", "B"].map((x, k) => {
+    const who = x === mySeat ? "You" : "Partner";
+    if (have[k]) return `<div class="hs ok">${lastSent[x] ? `<img src="${lastSent[x]}" alt="">` : ""}<b>${who} (${x}): in ✓</b></div>`;
+    if (pend && pend.seat === x) return `<div class="hs"><b>${who} (${x})</b>${pend.failed ? "Didn't send" : "Sending…"}</div>`;
+    return `<div class="hs"><b>${who} (${x})</b>${hl.ph === "over" ? "No photo" : "Waiting"}</div>`;
+  }).join("");
+  let lbl, on = false, st = "";
+  if (hl.ph === "ready") { lbl = "WAIT FOR THE START"; st = "Line up your friends. The TV starts the clock."; }
+  else if (hl.ph === "over") { lbl = "ROUND OVER"; st = "Watch the TV for the results."; }
+  else if (pend) { lbl = pend.failed ? "DIDN'T SEND" : "SENDING…"; st = pend.failed ? "It didn't go through. Check your signal and send again." : pend.waiting ? "Reconnecting, then sending…" : "Sending your photo…"; }
+  else {
+    const ss = sendSeat();
+    if (ss) { on = true; lbl = ss === mySeat ? "SEND YOUR PHOTO" : "SEND YOUR PARTNER'S PHOTO"; st = ss === mySeat ? "Tap, then pick the photo your friend sent you." : "Your partner isn't connected, so you can send theirs too."; }
+    else if (have[0] && have[1]) { lbl = "DONE! BOTH IN"; st = "Your team is finished. Watch the TV."; }
+    else { lbl = "WAITING ON YOUR PARTNER"; st = "Your photo is in. Your partner sends the second one."; }
+  }
+  $("hBtn").classList.toggle("off", !on); $("hFile").disabled = !on; $("hLbl").textContent = lbl;
+  $("hStatus").textContent = hFlashMsg || st;
+  $("hStatus").classList.toggle("flash", !!hFlashMsg);
+  $("hRetry").hidden = !(pend && pend.failed);
+}
+async function shrink(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const enc = (max, q) => {
+      const sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.naturalWidth * sc)); c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL("image/jpeg", q);
+    };
+    let out = enc(1280, 0.72);
+    if (out.length > 450000) out = enc(1000, 0.6);
+    if (out.length > 450000) out = enc(800, 0.5);
+    if (!out.startsWith("data:image/jpeg")) throw new Error("encode");
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+function pushPhoto() {
+  if (!pend || !pend.data) return;
+  pend.failed = false; clearTimeout(pend.timer);
+  if (!mq || !mq.connected) { pend.waiting = true; pend.timer = setTimeout(() => { if (pend) { pend.failed = true; render(); } }, 30000); render(); return; }
+  pend.waiting = false;
+  const C = 40000, n = Math.ceil(pend.data.length / C);
+  for (let i = 0; i < n; i++) {
+    try { mq.publish(T("in"), JSON.stringify({ t: "ph", id: myId, pid: pend.pid, seat: pend.seat, i, n, d: pend.data.slice(i * C, (i + 1) * C) }), { qos: 1 }); } catch (e) {}
+  }
+  pend.timer = setTimeout(() => { if (pend) { pend.failed = true; render(); } }, 25000);
+  render();
+}
+$("hFile").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f || !state || pend) return;
+  const seat = sendSeat(); if (!seat) return;
+  pend = { pid: "x" + Math.random().toString(36).slice(2, 10), seat, data: null };
+  render();
+  try { pend.data = await shrink(f); }
+  catch (err) { pend = null; hFlash("Couldn't open that photo. Take a screenshot of it and send the screenshot."); return; }
+  pushPhoto();
+});
+$("hRetry").addEventListener("click", pushPhoto);
 
 connect();
 }

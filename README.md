@@ -25,4 +25,6 @@ the laptop keep working as a backup.
 - Challenges (working): a rules card per round for the TV. Deck the Cone has built-in music ("Deck the Halls",
   Web Audio) that stops at a random time, or a STOP-only mode for your own music. Santa's Beard has a 4-heat,
   60-second timer with a 3-2-1 start and end buzzer. Roll-off shows rolls per team from the Scoreboard.
-  Settings saved in localStorage key `hzCh`.
+  Raw score entry: Ho Ho Hole (+3, +1, −1 taps or type a total), Santa's Beard (marshmallows per partner turn),
+  Holiday Roll-off (tap 5, 3, 2, 1 prize cup, or Miss per roll, capped at each team's allowed rolls). "Save places
+  to the Scoreboard" ranks by score (ties share a place). Settings and raw scores saved in localStorage key `hzCh`.

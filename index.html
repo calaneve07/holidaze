@@ -109,6 +109,17 @@ textarea{min-height:200px;resize:vertical}
 .heat.cur{box-shadow:0 0 0 3px var(--gold)}
 .heat.done{opacity:.5}
 .heat b{display:block;font-size:18px}
+.rawt{width:100%;margin-top:8px}
+.rawt td{font-size:clamp(16px,1.7vw,22px);padding:8px 6px}
+.rawt th{font-size:13px}
+.rawt .tot{font:400 clamp(24px,3vw,40px)/1 'Archivo Black',sans-serif;color:var(--gold);text-align:right;width:90px}
+.rawt .pl{font:400 clamp(16px,1.8vw,24px)/1 'Archivo Black',sans-serif;width:60px}
+.rawt input{width:88px;min-height:44px;font-size:18px;text-align:center}
+.sb2{min-width:52px;min-height:44px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--ink);font:700 18px Rubik,sans-serif;cursor:pointer;margin:2px}
+.sb2:hover{background:rgba(255,255,255,.16)}.sb2:disabled{opacity:.35;cursor:default}
+.sb2:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.rl{color:var(--dim);font-size:14px;display:block}
+.okmsg{color:var(--gold);font-weight:700;min-height:24px}
 .lineup{margin:10px 0 0;padding-left:20px}
 .lineup li{margin:6px 0}
 .lineup span{color:var(--dim);font-size:14px}
@@ -845,7 +856,7 @@ const RULES = {
     "When the music stops, rush in and drop your hoop over the cone.",
     "<b>Top hoop is out.</b> Drop your hoop on the way and you're out too.",
     "Play until one pair is left. 2 games, placements added together."] },
-  hoho: { sub: "Round 2 · Cornhole with faces · 2 rounds", tool: "scoreboard", items: [
+  hoho: { sub: "Round 2 · Cornhole with faces · 2 rounds", tool: "raw", items: [
     "Partners alternate throws, 1 bag per player per round. Reverse the order in round 2.",
     "<b>Hole = +3</b> for the throwing team, even if it gets knocked in later.",
     "<b>Your own face = +1.</b> A rival's face = <b>they lose 1</b>.",
@@ -880,8 +891,9 @@ try { CH = JSON.parse(localStorage.getItem(CKEY)); } catch (e) {}
 if (!CH || typeof CH !== "object") CH = {};
 CH.cur = RULES[CH.cur] ? CH.cur : "cone";
 CH.min = Math.min(120, Math.max(3, +CH.min || 15)); CH.max = Math.min(180, Math.max(CH.min + 1, +CH.max || 40));
+CH.raw = CH.raw && typeof CH.raw === "object" ? CH.raw : {}; CH.msg = "";
 CH.own = !!CH.own; CH.heat = Math.min(3, Math.max(0, +CH.heat || 0)); CH.done = Array.isArray(CH.done) ? CH.done.slice(0, 4) : [];
-function chSave() { try { localStorage.setItem(CKEY, JSON.stringify({ cur: CH.cur, min: CH.min, max: CH.max, own: CH.own, heat: CH.heat, done: CH.done })); } catch (e) {} }
+function chSave() { try { localStorage.setItem(CKEY, JSON.stringify({ cur: CH.cur, min: CH.min, max: CH.max, own: CH.own, heat: CH.heat, done: CH.done, raw: CH.raw })); } catch (e) {} }
 
 // Music: "Deck the Halls" (traditional), played with Web Audio, stops at a random moment.
 const NOTE = { C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5, "F#": 6, G: 7, "G#": 8, A: 9, "A#": 10, B: 11 };
@@ -954,6 +966,50 @@ function heatStart() {
 }
 function heatStopNow() { ht.run = false; ht.pre = 0; cancelAnimationFrame(ht.raf); ht.msg = ""; chRender(); }
 
+// Raw scores for Ho Ho Hole, Santa's Beard, and Holiday Roll-off.
+function rawFix() {
+  const n = S.teams.length, R = CH.raw, num = v => (v === "" || v == null || isNaN(+v) ? null : +v);
+  R.hoho = S.teams.map((_, i) => (R.hoho && +R.hoho[i]) || 0);
+  R.hohoU = Array.isArray(R.hohoU) ? R.hohoU.filter(x => x[0] < n) : [];
+  R.beard = S.teams.map((_, i) => { const x = R.beard && R.beard[i]; return [num(x && x[0]), num(x && x[1])]; });
+  R.roll = S.teams.map((_, i) => (R.roll && Array.isArray(R.roll[i]) ? R.roll[i].map(Number) : []));
+}
+function rawScore(id, i) {
+  const R = CH.raw;
+  if (id === "hoho") return R.hoho[i];
+  if (id === "beard") return (R.beard[i][0] || 0) + (R.beard[i][1] || 0);
+  return R.roll[i].reduce((a, b) => a + b, 0);
+}
+function rawHas(id, i) { const R = CH.raw; return id === "hoho" ? R.hoho[i] !== 0 || R.hohoU.some(x => x[0] === i) : id === "beard" ? R.beard[i][0] != null || R.beard[i][1] != null : R.roll[i].length > 0; }
+function rawPlaces(id) {
+  const rows = rankBy(S.teams.map((n, i) => ({ i, t: rawScore(id, i) })), "t", true);
+  const pl = S.teams.map(() => null); rows.forEach(r => { pl[r.i] = r.rank; });
+  return { pl, order: rows.map(r => r.i) };
+}
+function rawHTML(id) {
+  rawFix();
+  const R = CH.raw, n = S.teams.length, P = rawPlaces(id).pl, any = S.teams.some((_, i) => rawHas(id, i));
+  const allow = {}; if (id === "rolloff") scStand("rolloff").forEach(x => { allow[x.i] = 6 + bonusRolls(x.rank, n); });
+  const name = i => `<span class="tcell">${BADGE(i, 28)}${esc(S.teams[i])}</span>`;
+  const place = i => `<td class="pl">${any ? ordinal(P[i]) : "–"}</td>`;
+  let head = "", rows = "";
+  if (id === "hoho") {
+    head = `<tr><th>Team</th><th>Add points</th><th>Fix total</th><th class="n">Points</th><th>Place</th></tr>`;
+    rows = S.teams.map((_, i) => `<tr><td>${name(i)}</td><td><button class="sb2" data-act="h" data-i="${i}" data-v="3" aria-label="Hole, plus 3 for ${esc(S.teams[i])}">+3</button><button class="sb2" data-act="h" data-i="${i}" data-v="1" aria-label="Own face, plus 1 for ${esc(S.teams[i])}">+1</button><button class="sb2" data-act="h" data-i="${i}" data-v="-1" aria-label="Face hit by a rival, minus 1 for ${esc(S.teams[i])}">−1</button></td><td><input type="number" inputmode="numeric" data-k="hoho" data-i="${i}" value="${R.hoho[i]}" aria-label="${esc(S.teams[i])} total"></td><td class="tot">${R.hoho[i]}</td>${place(i)}</tr>`).join("");
+  } else if (id === "beard") {
+    head = `<tr><th>Team</th><th>Partner 1 wears</th><th>Partner 2 wears</th><th class="n">Total</th><th>Place</th></tr>`;
+    rows = S.teams.map((_, i) => `<tr><td>${name(i)}</td>${[0, 1].map(k => `<td><input type="number" min="0" inputmode="numeric" data-k="b${k}" data-i="${i}" value="${R.beard[i][k] == null ? "" : R.beard[i][k]}" aria-label="${esc(S.teams[i])}, partner ${k + 1} wears"></td>`).join("")}<td class="tot">${rawScore("beard", i)}</td>${place(i)}</tr>`).join("");
+  } else {
+    head = `<tr><th>Team</th><th>Add a roll</th><th>Rolls</th><th class="n">Points</th><th>Place</th></tr>`;
+    rows = scStand("rolloff").map(x => x.i).map(i => { const used = R.roll[i].length, full = used >= allow[i]; return `<tr><td>${name(i)}</td><td>${[5, 3, 2, 1, 0].map(v => `<button class="sb2" data-act="r" data-i="${i}" data-v="${v}"${full ? " disabled" : ""} aria-label="${v === 1 ? "Prize cup, 1 point" : v === 0 ? "Miss, 0 points" : v + " points"} for ${esc(S.teams[i])}">${v === 1 ? "1🎁" : v === 0 ? "Miss" : v}</button>`).join("")}<button class="sb2" data-act="ru" data-i="${i}"${used ? "" : " disabled"} aria-label="Undo last roll for ${esc(S.teams[i])}">Undo</button></td><td><b>${used} of ${allow[i]}</b><span class="rl">${R.roll[i].join(", ") || "no rolls yet"}</span></td><td class="tot">${rawScore("rolloff", i)}</td>${place(i)}</tr>`; }).join("");
+  }
+  return `<div class="tool"><p class="sub" style="margin:0">${id === "hoho" ? "Cornhole points" : id === "beard" ? "Marshmallows counted" : "Roll-off points (teams in roll order)"}</p>
+    <div style="overflow-x:auto"><table class="rawt"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
+    <div class="bar"><button class="b pri" data-act="save">Save places to the Scoreboard</button>${id === "hoho" ? `<button class="b" data-act="hu"${R.hohoU.length ? "" : " disabled"}>Undo last tap</button>` : ""}<button class="b" data-act="clr">Clear these scores</button></div>
+    <p class="okmsg" aria-live="polite">${esc(CH.msg)}</p>
+    <p class="note">${id === "hoho" ? "+3 for a hole, +1 for your own face. When a bag lands on a rival's face, tap −1 on that rival. " : id === "rolloff" ? "1🎁 is a prize cup. Bonus rolls come from the Scoreboard standings before the finale. " : ""}Highest score places 1st. Ties share a place. Saving replaces this round's places on the Scoreboard.</p></div>`;
+}
+let rawClrArm = 0;
 function chRender() {
   $("chRounds").innerHTML = ROUNDS.map(r => `<button class="b${r.id === CH.cur ? " pri" : ""}" data-c="${r.id}">${esc(r.name)}</button>`).join("");
   const r = ROUNDS.find(x => x.id === CH.cur), R = RULES[r.id];
@@ -973,11 +1029,9 @@ function chRender() {
       <div class="mstate${ht.msg === "time" ? " stop" : ""}" style="font-size:clamp(24px,3.4vw,44px)">${ht.msg === "time" ? "Time! Count a rival's cap, then beard." : ht.run ? "Toss!" : ht.pre ? "Get ready…" : ""}</div>
       <div class="bar" style="justify-content:center"><button class="b pri" id="htGo"${ht.run || ht.pre ? " disabled" : ""}>Start heat ${CH.heat + 1}</button><button class="b" id="htStop"${ht.run || ht.pre ? "" : " disabled"}>Stop timer</button><button class="b" id="htPrev"${CH.heat ? "" : " disabled"}>Previous heat</button><button class="b" id="htNext"${CH.heat < 3 ? "" : " disabled"}>Next heat</button><button class="b" id="htReset">Reset heats</button></div>
       <div class="heats">${hl.map((h, k) => `<div class="heat${k === CH.heat ? " cur" : ""}${CH.done.includes(k) ? " done" : ""}"><b>${CH.done.includes(k) ? "✓ " : ""}${esc(label(h, k))}</b>${esc(h[2].join(", ") || "no teams")}</div>`).join("")}</div>
-      <p class="note">While one group tosses, the other group counts, wipes off, and swaps roles.</p></div>`;
-  } else if (R.tool === "rolls") {
-    const n = S.teams.length;
-    tool = `<div class="tool"><p class="sub" style="margin:0 0 8px">Rolls per team (from the Scoreboard, in roll order)</p><div class="chips">${scStand("rolloff").map(x => { const b = bonusRolls(x.rank, n); return `<span class="chip" style="font-size:18px">${BADGE(x.i, 26)}${esc(x.n)}: <b>${6 + b} rolls</b>${b ? " (+" + b + ")" : ""}</span>`; }).join("")}</div>
-      <div class="bar"><a class="b" href="#scoreboard" style="display:inline-flex;align-items:center;text-decoration:none">Open the Scoreboard</a></div></div>`;
+      <p class="note">While one group tosses, the other group counts, wipes off, and swaps roles.</p></div>` + rawHTML("beard");
+  } else if (R.tool === "rolls" || R.tool === "raw") {
+    tool = rawHTML(r.id);
   } else {
     const go = { hotline: ["#hotline", "Open the Hotline tab"], clock: ["#clock", "Open Tick-Tock Tinsel Talk"], scoreboard: ["#scoreboard", "Open the Scoreboard"] }[R.tool];
     tool = `<div class="tool"><a class="b pri" href="${go[0]}" style="display:inline-flex;align-items:center;text-decoration:none">${go[1]}</a></div>`;
@@ -985,9 +1039,27 @@ function chRender() {
   $("chCard").innerHTML = `<h2>${esc(r.name)}</h2><p class="sub">${esc(R.sub)}</p><ul>${R.items.map(t => `<li>${t}</li>`).join("")}</ul>${tool}`;
   heatShow();
 }
-$("chRounds").addEventListener("click", e => { const b = e.target.closest("[data-c]"); if (!b) return; CH.cur = b.dataset.c; chSave(); chRender(); });
+$("chRounds").addEventListener("click", e => { const b = e.target.closest("[data-c]"); if (!b) return; CH.cur = b.dataset.c; CH.msg = ""; chSave(); chRender(); });
 $("chCard").addEventListener("click", e => {
-  const id = e.target.closest("button") && e.target.closest("button").id;
+  const btn = e.target.closest("button"), id = btn && btn.id, act = btn && btn.dataset.act;
+  if (act) {
+    rawFix(); const R = CH.raw, i = +btn.dataset.i, v = +btn.dataset.v, rid = CH.cur;
+    CH.msg = "";
+    if (act === "h") { R.hoho[i] += v; R.hohoU.push([i, v]); }
+    else if (act === "hu") { const u = R.hohoU.pop(); if (u) R.hoho[u[0]] -= u[1]; }
+    else if (act === "r") R.roll[i].push(v);
+    else if (act === "ru") R.roll[i].pop();
+    else if (act === "save") {
+      const d = rawPlaces(rid); scFix(); SC.places[rid] = d.pl.slice(); SC.hist[rid] = d.order.slice(); scSave(); scRender();
+      CH.msg = "Saved. " + ROUNDS.find(x => x.id === rid).name + " places are on the Scoreboard.";
+    } else if (act === "clr") {
+      const now = Date.now();
+      if (now - rawClrArm > 3000) { rawClrArm = now; btn.textContent = "Tap again to clear"; setTimeout(() => { if (btn.isConnected) btn.textContent = "Clear these scores"; }, 3000); return; }
+      rawClrArm = 0;
+      if (rid === "hoho") { R.hoho = S.teams.map(() => 0); R.hohoU = []; } else if (rid === "beard") R.beard = S.teams.map(() => [null, null]); else R.roll = S.teams.map(() => []);
+    }
+    chSave(); chRender(); return;
+  }
   if (id === "muGo") musStart();
   else if (id === "muStop") musStop(true);
   else if (id === "muReset") { mus.round = 0; chRender(); }
@@ -999,6 +1071,13 @@ $("chCard").addEventListener("click", e => {
 });
 $("chCard").addEventListener("change", e => {
   if (e.target.id === "muOwn") { CH.own = e.target.checked; chSave(); }
+  const k = e.target.dataset && e.target.dataset.k;
+  if (k) {
+    rawFix(); const i = +e.target.dataset.i, raw = e.target.value.trim(), v = raw === "" || isNaN(+raw) ? null : Math.round(+raw);
+    if (k === "hoho") { CH.raw.hoho[i] = v || 0; CH.raw.hohoU = []; }
+    else CH.raw.beard[i][k === "b0" ? 0 : 1] = v == null ? null : Math.max(0, v);
+    CH.msg = ""; chSave(); chRender();
+  }
   if (e.target.id === "muMin" || e.target.id === "muMax") {
     CH.min = Math.min(120, Math.max(3, +$("muMin").value || 15)); CH.max = Math.min(180, Math.max(CH.min + 1, +$("muMax").value || 40));
     chSave(); chRender();

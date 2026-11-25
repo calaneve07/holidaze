@@ -22,4 +22,7 @@ the laptop keep working as a backup.
   Tick-Tock Tinsel Talk, Holiday Roll-off). Tap teams in finish order to enter placements. Points default to
   team count down to 1 (6-5-4-3-2-1). Hotline and Tinsel Talk results can be imported. Shows Roll-off rolls per
   team (+1 for 3rd and 4th, +2 for the last two). Saved in localStorage key `hzScore`.
-- Challenges (placeholder): lineup with rules, timers, and scoring per round.
+- Challenges (working): a rules card per round for the TV. Deck the Cone has built-in music ("Deck the Halls",
+  Web Audio) that stops at a random time, or a STOP-only mode for your own music. Santa's Beard has a 4-heat,
+  60-second timer with a 3-2-1 start and end buzzer. Roll-off shows rolls per team from the Scoreboard.
+  Settings saved in localStorage key `hzCh`.

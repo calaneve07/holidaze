@@ -78,6 +78,21 @@ textarea{min-height:200px;resize:vertical}
 .nav a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .soon{background:var(--face);border-radius:16px;padding:18px 20px;margin-top:16px;max-width:760px}
 .soon h2{margin-top:0}
+.sctable{overflow-x:auto;background:var(--face);border-radius:16px;padding:6px 10px}
+.sctable table{min-width:720px}
+.sctable th{font-size:13px;line-height:1.2;vertical-align:bottom}
+.sctable td{font-size:clamp(16px,1.6vw,22px)}
+.sctable .tot{font:400 clamp(22px,2.6vw,34px)/1 'Archivo Black',sans-serif;color:var(--gold)}
+.sctable .rk{font:400 clamp(16px,1.8vw,24px)/1 'Archivo Black',sans-serif;width:56px}
+.sctable th.rk{font:500 13px Rubik,sans-serif}
+.sctable tr.lead td{background:rgba(242,193,78,.12)}
+.sctable td small{display:block;color:var(--dim);font-size:12px}
+.sctable .fin{border-left:2px solid var(--line)}
+.rollbox{background:var(--face);border-radius:16px;padding:12px 16px;margin-top:14px}
+.rollbox h2{margin:0 0 6px;font-size:18px}
+.tbtn{display:inline-flex;align-items:center;gap:8px}
+.b.on{box-shadow:0 0 0 3px var(--gold)}
+.scorder{padding-left:24px;margin:8px 0}.scorder li{margin:4px 0;font-size:17px}.scorder span{color:var(--dim)}
 .lineup{margin:10px 0 0;padding-left:20px}
 .lineup li{margin:6px 0}
 .lineup span{color:var(--dim);font-size:14px}
@@ -132,7 +147,7 @@ textarea{min-height:200px;resize:vertical}
   <header>
     <h1>Holidaze Craze</h1>
     <nav class="nav" aria-label="Sections">
-      <a href="#clock" data-v="clock">Chess Clock</a>
+      <a href="#clock" data-v="clock">Tick-Tock Tinsel Talk</a>
       <a href="#hotline" data-v="hotline">Hotline</a>
       <a href="#scoreboard" data-v="scoreboard">Scoreboard</a>
       <a href="#challenges" data-v="challenges">Challenges</a>
@@ -158,11 +173,29 @@ textarea{min-height:200px;resize:vertical}
   </section>
 
   <section class="view" id="v-scoreboard" hidden>
-    <div class="soon">
-      <h2>Scoreboard</h2>
-      <p>Coming next: one running total for every team across the night, shown on the TV. You enter each challenge's result in a few taps.</p>
-      <p class="note">Scoring rules still to decide: placement points (1st = 6, 2nd = 5…), raw scores, or bonus points.</p>
-    </div>
+    <div class="cat"><small>Scoreboard</small><b id="scLead">No results yet</b></div>
+    <div class="sctable"><table><thead id="scHead"></thead><tbody id="scBody"></tbody></table></div>
+    <p class="note" id="scNote"></p>
+    <div class="rollbox" id="scRoll"></div>
+    <details id="scEntry" open>
+      <summary>Enter results</summary>
+      <div class="bar" id="scRounds"></div>
+      <p id="scPrompt" style="margin:4px 0"></p>
+      <div class="bar" id="scTeams"></div>
+      <ol class="scorder" id="scOrder"></ol>
+      <div class="bar">
+        <button class="b" id="scTie">Next tap ties the last one: off</button>
+        <button class="b" id="scUndo">Undo last tap</button>
+        <button class="b" id="scImport" hidden></button>
+        <button class="b" id="scClear">Clear this round</button>
+      </div>
+      <p class="note" id="scImportNote"></p>
+      <div class="grid">
+        <div><label for="scScale">Placement points</label><select id="scScale"><option value="count">1st gets one point per team, down to 1 (6-5-4-3-2-1 with 6 teams)</option><option value="321">3-2-1, everyone else 0</option></select></div>
+        <div><label>&nbsp;</label><button class="b" id="scReset">Reset the whole scoreboard</button></div>
+      </div>
+      <p class="note">Tap teams in finish order. Turn on "ties" before tapping a team that tied the one before it. Team names come from the Tinsel Talk settings. Scores stay in this browser.</p>
+    </details>
   </section>
 
   <section class="view" id="v-challenges" hidden>
@@ -256,6 +289,7 @@ S.cats = Array.isArray(S.cats) && S.cats.length ? S.cats : DEF.cats.slice();
 S.keys = Array.isArray(S.keys) && S.keys.length === 2 ? S.keys : DEF.keys.slice();
 S.secs = +S.secs || 30; S.pen = S.pen == null ? 5 : +S.pen; S.ci = +S.ci || 0;
 S.alt = S.alt !== false;
+S.games = Array.isArray(S.games) ? S.games : [];
 S.mode = S.mode === "group" ? "group" : "duel"; S.rank = S.rank === "ans" ? "ans" : "wins"; S.gstart = +S.gstart || 0;
 fixArrays();
 if (!Array.isArray(S.order) || S.order.length !== S.teams.length) S.order = S.teams.map((_, i) => i);
@@ -414,7 +448,7 @@ function pen() {
   say("−" + S.pen + " sec for " + tn(M.a));
   if (M.t[M.a] <= 0 && M.ph === "run") timeout(M.a); else draw();
 }
-function snap() { undoSnap = JSON.stringify({ order: S.order, pts: S.pts, left: S.left, ans: S.ans, gstart: S.gstart }); }
+function snap() { undoSnap = JSON.stringify({ order: S.order, pts: S.pts, left: S.left, ans: S.ans, gstart: S.gstart, games: S.games }); }
 function addAnswers() { M.ids.forEach((ti, s) => { S.ans[ti] += M.c[s]; }); }
 function finishDuel(ls) {
   M.ph = "over"; M.loser = ls; snap();
@@ -433,8 +467,9 @@ function finishGroup() {
   const w = M.alive.indexOf(true), wt = M.ids[w], leftS = Math.round(M.t[w] / 100) / 10;
   S.pts[wt] += 1; S.left[wt] = Math.round((S.left[wt] + leftS) * 10) / 10; addAnswers();
   S.gstart = (S.gstart + 1) % S.teams.length;
-  save(); buzz();
   const places = [w].concat(M.outOrder.slice().reverse());
+  S.games = S.games.concat([places.map(x => M.ids[x])]);
+  save(); buzz();
   $("ovT").textContent = S.teams[wt] + " is last standing!";
   $("ovP").textContent = places.map((s, k) => `${ordinal(k + 1)} ${tn(s)} (${M.c[s]})`).join(" · ") + ". Numbers are answers given.";
   $("over").classList.add("show"); $("ovGo").focus();
@@ -670,8 +705,120 @@ idb("readonly", st => st.getAll()).then(recs => {
 }).catch(() => hRender());
 hRender();
 
-const LINEUP = [["Reindeer Catapult", "build and launch"], ["Candy Cane Bridge", "build and load test"], ["Holiday Hotline", "phone a friend"], ["Holiday Chess Clock", "phone buzzers, built"], ["Face Hole", "cornhole"], ["Santa's Beard", "messy"], ["Saran wrap ball", "finale"]];
-$("lineup").innerHTML = LINEUP.map(([n, d]) => `<li>${esc(n)} <span>${esc(d)}</span></li>`).join("");
+const ROUNDS = [
+  { id: "cone", name: "Deck the Cone", short: "Deck the Cone", d: "musical hoops, elimination, 2 games" },
+  { id: "hoho", name: "Ho Ho Hole", short: "Ho Ho Hole", d: "cornhole with face photos" },
+  { id: "hotline", name: "Holiday Hotline", short: "Hotline", d: "photo round on phones", imp: "hotline" },
+  { id: "beard", name: "Santa's Beard", short: "Santa's Beard", d: "marshmallow toss, 4 heats" },
+  { id: "tinsel", name: "Tick-Tock Tinsel Talk", short: "Tinsel Talk", d: "all-teams clock, 3 games", imp: "tinsel" },
+  { id: "rolloff", name: "Holiday Roll-off", short: "Roll-off", d: "finale, bonus rolls for trailing teams", fin: true }
+];
+$("lineup").innerHTML = ROUNDS.map(r => `<li>${esc(r.name)} <span>${esc(r.d)}</span></li>`).join("");
+
+// ---------- Scoreboard ----------
+const SKEY = "hzScore";
+let SC = null;
+try { SC = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
+if (!SC || typeof SC !== "object") SC = {};
+SC.scale = SC.scale === "321" ? "321" : "count";
+SC.places = SC.places || {}; SC.hist = SC.hist || {};
+SC.cur = ROUNDS.some(r => r.id === SC.cur) ? SC.cur : ROUNDS[0].id;
+SC.tie = false;
+let scClearArm = 0, scResetArm = 0;
+function scFix() {
+  const n = S.teams.length;
+  ROUNDS.forEach(r => {
+    const a = Array.isArray(SC.places[r.id]) ? SC.places[r.id] : [];
+    SC.places[r.id] = S.teams.map((_, i) => (a[i] == null || a[i] > n ? null : +a[i]));
+    SC.hist[r.id] = (Array.isArray(SC.hist[r.id]) ? SC.hist[r.id] : []).filter(i => i < n && SC.places[r.id][i] != null);
+  });
+}
+function scSave() { try { localStorage.setItem(SKEY, JSON.stringify({ scale: SC.scale, places: SC.places, hist: SC.hist, cur: SC.cur })); } catch (e) {} }
+function scPts(p) { if (p == null) return null; return SC.scale === "321" ? Math.max(0, 4 - p) : Math.max(0, S.teams.length + 1 - p); }
+function rankBy(rows, key, desc) {
+  rows.sort((a, b) => (desc ? b[key] - a[key] : a[key] - b[key]) || a.i - b.i);
+  rows.forEach((r, k) => { r.rank = k && rows[k - 1][key] === r[key] ? rows[k - 1].rank : k + 1; });
+  return rows;
+}
+function scStand(skip) {
+  return rankBy(S.teams.map((n, i) => ({ i, n, t: ROUNDS.reduce((a, r) => a + (r.id === skip ? 0 : scPts(SC.places[r.id][i]) || 0), 0) })), "t", true);
+}
+function bonusRolls(rank, n) { return rank <= 2 ? 0 : rank > n - 2 ? 2 : 1; }
+function scImportData(r) {
+  if (r.imp === "hotline") {
+    let h = null; try { h = JSON.parse(localStorage.getItem("hzResults") || "{}").hotline; } catch (e) {}
+    if (!h || !Array.isArray(h.places) || !h.places.length) return null;
+    const pl = S.teams.map(() => null);
+    h.places.forEach(x => { if (x.team < pl.length) pl[x.team] = x.place; });
+    const t = new Date(h.at || Date.now());
+    return { pl, note: "Hotline tab results saved at " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "." };
+  }
+  if (r.imp === "tinsel") {
+    const g = (S.games || []).filter(x => Array.isArray(x) && x.length);
+    if (!g.length) return null;
+    const rows = S.teams.map((n, i) => ({ i, sum: g.reduce((a, game) => { const k = game.indexOf(i); return a + (k < 0 ? S.teams.length : k + 1); }, 0) }));
+    rankBy(rows, "sum", false);
+    const pl = S.teams.map(() => null); rows.forEach(x => { pl[x.i] = x.rank; });
+    return { pl, note: g.length + (g.length === 1 ? " all-teams game" : " all-teams games") + " saved on the Tinsel Talk tab. Lowest total of finishing places ranks first: " + rows.map(x => S.teams[x.i] + " " + x.sum).join(", ") + "." };
+  }
+  return null;
+}
+function scRender() {
+  scFix();
+  const n = S.teams.length, rows = scStand(), any = rows.some(r => r.t > 0);
+  $("scHead").innerHTML = `<tr><th class="rk">Place</th><th>Team</th>${ROUNDS.map(r => `<th class="n${r.fin ? " fin" : ""}">${esc(r.short)}</th>`).join("")}<th class="n">Total</th></tr>`;
+  $("scBody").innerHTML = rows.map(r => `<tr class="${any && r.rank === 1 ? "lead" : ""}"><td class="rk">${any ? ordinal(r.rank) : "–"}</td><td><span class="tcell">${BADGE(r.i, 30)}${esc(r.n)}</span></td>${ROUNDS.map(rd => { const p = SC.places[rd.id][r.i]; return `<td class="n${rd.fin ? " fin" : ""}">${p == null ? "–" : scPts(p) + `<small>${ordinal(p)}</small>`}</td>`; }).join("")}<td class="n tot">${r.t}</td></tr>`).join("");
+  const top = rows.filter(r => r.rank === 1);
+  $("scLead").textContent = !any ? "No results yet" : top.length > 1 ? "Tied for 1st: " + top.map(r => r.n).join(" and ") + " (" + top[0].t + ")" : top[0].n + " leads with " + top[0].t;
+  const done = ROUNDS.filter(r => SC.places[r.id].every(p => p != null)).length;
+  $("scNote").textContent = done + " of " + ROUNDS.length + " rounds complete. Points per round: " + (SC.scale === "321" ? "3, 2, 1, then 0." : S.teams.map((_, k) => n - k).join("-") + ".");
+  const pre = scStand("rolloff");
+  $("scRoll").innerHTML = `<h2>Holiday Roll-off: rolls per team</h2><p class="note" style="margin:0 0 8px">Based on standings before the finale. Roll in this order. Bonus rolls: 3rd and 4th get +1, last two get +2.</p><div class="chips">${pre.map(r => { const b = bonusRolls(r.rank, n); return `<span class="chip">${BADGE(r.i, 22)}${esc(r.n)}: <b>${6 + b} rolls</b>${b ? " (+" + b + ")" : ""}</span>`; }).join("")}</div>`;
+  $("scRounds").innerHTML = ROUNDS.map(r => { const full = SC.places[r.id].every(p => p != null); return `<button class="b${r.id === SC.cur ? " pri" : ""}" data-r="${r.id}">${full ? "✓ " : ""}${esc(r.name)}</button>`; }).join("");
+  const rd = ROUNDS.find(r => r.id === SC.cur), pl = SC.places[rd.id], hist = SC.hist[rd.id];
+  const left = S.teams.map((nm, i) => i).filter(i => pl[i] == null);
+  const nextPlace = SC.tie && hist.length ? pl[hist[hist.length - 1]] : hist.length + 1;
+  $("scPrompt").innerHTML = left.length ? `<b>${esc(rd.name)}:</b> tap the team in <b>${ordinal(nextPlace)}</b> place.` : `<b>${esc(rd.name)}</b> is complete.`;
+  $("scTeams").innerHTML = left.map(i => `<button class="b tbtn" data-t="${i}">${BADGE(i, 24)}${esc(S.teams[i])}</button>`).join("");
+  $("scOrder").innerHTML = hist.map(i => `<li value="${pl[i]}">${esc(S.teams[i])} <span>${scPts(pl[i])} pts</span></li>`).join("");
+  $("scTie").textContent = "Next tap ties the last one: " + (SC.tie ? "on" : "off");
+  $("scTie").classList.toggle("on", SC.tie);
+  const imp = rd.imp ? scImportData(rd) : null;
+  $("scImport").hidden = !rd.imp;
+  $("scImport").disabled = !imp;
+  $("scImport").textContent = rd.imp === "hotline" ? "Import from the Hotline tab" : "Import from Tinsel Talk games";
+  $("scImportNote").textContent = rd.imp ? (imp ? imp.note : rd.imp === "hotline" ? "No Hotline results saved yet." : "No all-teams games saved yet. Play Tinsel Talk in All-teams mode and each finished game is saved here.") : "";
+  $("scScale").value = SC.scale;
+  $("scClear").textContent = "Clear this round"; $("scReset").textContent = "Reset the whole scoreboard";
+}
+$("scRounds").addEventListener("click", e => { const b = e.target.closest("[data-r]"); if (!b) return; SC.cur = b.dataset.r; SC.tie = false; scSave(); scRender(); });
+$("scTeams").addEventListener("click", e => {
+  const b = e.target.closest("[data-t]"); if (!b) return;
+  const i = +b.dataset.t, pl = SC.places[SC.cur], hist = SC.hist[SC.cur];
+  if (pl[i] != null) return;
+  pl[i] = SC.tie && hist.length ? pl[hist[hist.length - 1]] : hist.length + 1;
+  hist.push(i); SC.tie = false; scSave(); scRender();
+});
+$("scTie").addEventListener("click", () => { SC.tie = !SC.tie; scRender(); });
+$("scUndo").addEventListener("click", () => { const hist = SC.hist[SC.cur]; if (!hist.length) return; SC.places[SC.cur][hist.pop()] = null; SC.tie = false; scSave(); scRender(); });
+$("scImport").addEventListener("click", () => {
+  const rd = ROUNDS.find(r => r.id === SC.cur), d = scImportData(rd); if (!d) return;
+  SC.places[rd.id] = d.pl.slice();
+  SC.hist[rd.id] = S.teams.map((_, i) => i).filter(i => d.pl[i] != null).sort((a, b) => d.pl[a] - d.pl[b] || a - b);
+  scSave(); scRender();
+});
+$("scClear").addEventListener("click", () => {
+  const now = Date.now();
+  if (now - scClearArm > 3000) { scClearArm = now; $("scClear").textContent = "Tap again to clear"; setTimeout(() => { $("scClear").textContent = "Clear this round"; }, 3000); return; }
+  scClearArm = 0; SC.places[SC.cur] = S.teams.map(() => null); SC.hist[SC.cur] = []; SC.tie = false; scSave(); scRender();
+});
+$("scReset").addEventListener("click", () => {
+  const now = Date.now();
+  if (now - scResetArm > 3000) { scResetArm = now; $("scReset").textContent = "Tap again to reset everything"; setTimeout(() => { $("scReset").textContent = "Reset the whole scoreboard"; }, 3000); return; }
+  scResetArm = 0; SC.places = {}; SC.hist = {}; SC.cur = ROUNDS[0].id; SC.tie = false; scSave(); scRender();
+});
+$("scScale").addEventListener("change", () => { SC.scale = $("scScale").value === "321" ? "321" : "count"; scSave(); scRender(); });
+scRender();
 let view = "clock";
 function route() {
   const h = (location.hash || "#clock").slice(1);
@@ -679,6 +826,7 @@ function route() {
   document.querySelectorAll(".view").forEach(v => { v.hidden = v.id !== "v-" + view; });
   document.querySelectorAll(".nav a").forEach(a => a.classList.toggle("cur", a.dataset.v === view));
   if (view !== "hotline") hClosePop();
+  if (view === "scoreboard") scRender();
   try { broadcast(); } catch (e) {}
 }
 addEventListener("hashchange", route);
@@ -742,7 +890,7 @@ $("teams").addEventListener("change", () => { setTimeout(renderPhones, 0);
   if (names.length < 2) { say("You need at least 2 teams"); return; }
   const changed = names.length !== S.teams.length;
   S.teams = names; fixArrays();
-  if (changed) { S.order = names.map((_, i) => i); S.gstart = 0; undoSnap = null; }
+  if (changed) { S.order = names.map((_, i) => i); S.gstart = 0; S.games = []; undoSnap = null; }
   save(); newMatch();
 });
 $("cats").addEventListener("change", () => {
@@ -758,7 +906,7 @@ $("resetAll").addEventListener("click", () => {
   const now = Date.now();
   if (now - resetArm > 3000) { resetArm = now; $("resetAll").textContent = "Tap again to reset"; setTimeout(() => { $("resetAll").textContent = "Reset all scores"; }, 3000); return; }
   resetArm = 0; S.pts = S.teams.map(() => 0); S.left = S.teams.map(() => 0); S.ans = S.teams.map(() => 0);
-  S.order = S.teams.map((_, i) => i); S.gstart = 0; undoSnap = null;
+  S.order = S.teams.map((_, i) => i); S.gstart = 0; S.games = []; undoSnap = null;
   $("resetAll").textContent = "Reset all scores"; save(); say("Scores reset"); newMatch();
 });
 

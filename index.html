@@ -110,6 +110,9 @@ textarea{min-height:200px;resize:vertical}
 .phones h2{margin:0 0 6px}
 #qr{background:#fff;padding:10px;border-radius:12px;line-height:0}
 #qr img,#qr canvas{width:180px;height:180px}
+#hlQr{background:#fff;padding:8px;border-radius:12px;line-height:0}
+#hlQr img,#hlQr canvas{width:130px;height:130px}
+.hjoin .jtxt{display:flex;flex-direction:column;gap:6px}
 .code{font:400 clamp(28px,4vw,40px)/1 'Archivo Black',sans-serif;letter-spacing:.08em;color:var(--gold)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .chip{padding:4px 12px;border-radius:99px;background:rgba(0,0,0,.28);font-size:14px}
@@ -164,7 +167,7 @@ textarea{min-height:200px;resize:vertical}
       <button class="b" id="hlReset">Reset round</button>
       <label class="inl" for="hlMin">Minutes <input id="hlMin" type="number" min="1" max="30" inputmode="numeric"></label>
     </div>
-    <div class="hjoin"><span>Join: <b id="hlJoin">…</b></span><span class="chips" id="hlPhones" style="margin:0"></span></div>
+    <div class="hjoin"><div id="hlQr" aria-label="QR code to join"></div><div class="jtxt"><span>Scan to join or rejoin, or open <b id="hlJoin">…</b></span><span class="chips" id="hlPhones" style="margin:0"></span></div></div>
     <div class="msg" id="hlMsg" aria-live="polite"></div>
     <div class="hlgrid" id="hlGrid"></div>
     <h2>Finish order</h2>
@@ -946,6 +949,8 @@ function showJoin() {
   $("hlJoin").textContent = url.replace(/^https?:\/\//, "");
   $("qr").innerHTML = "";
   try { new QRCode($("qr"), { text: url, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $("qr").style.display = "none"; }
+  $("hlQr").innerHTML = "";
+  try { new QRCode($("hlQr"), { text: url, width: 130, height: 130, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $("hlQr").style.display = "none"; }
   renderPhones();
 }
 function onIn(d) {
